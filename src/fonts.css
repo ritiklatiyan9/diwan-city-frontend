@@ -1,0 +1,27 @@
+@font-face {
+  font-family: "Test Founders Grotesk X-Cond Sm";
+  src: url("/fonts/Test-Founders-Grotesk-X-Cond-Sm.woff2") format("woff2"),
+       url("/fonts/Test-Founders-Grotesk-X-Cond-Sm.ttf") format("truetype");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Neue Montreal Regular";
+  src: url("/fonts/Neue-Montreal-Regular.woff2") format("woff2"),
+       url("/fonts/Neue-Montreal-Regular.ttf") format("truetype");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+
+@font-face {
+  font-family: "Qrada Personal Use";
+  src: url("/fonts/Qrada-Personal-Use.woff2") format("woff2"),
+       url("/fonts/Qrada-Personal-Use.ttf") format("truetype");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
