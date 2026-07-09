@@ -25,8 +25,9 @@ const fmtDate = (d) => {
   return Number.isNaN(dt.getTime()) ? String(d) : dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
-const Row = ({ icon: Icon, label, value }) => {
+const Row = ({ icon, label, value }) => {
   if (!value) return null;
+  const Icon = icon;
   return (
     <div className="flex items-start gap-3 py-2.5 border-b border-slate-100 last:border-0">
       <Icon className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
@@ -41,12 +42,12 @@ const Row = ({ icon: Icon, label, value }) => {
 export const VerifyReceipt = () => {
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
-  const [status, setStatus] = useState('loading'); // loading | valid | invalid | missing
+  const [status, setStatus] = useState(token ? 'loading' : 'missing'); // loading | valid | invalid | missing
   const [receipt, setReceipt] = useState(null);
   const [reason, setReason] = useState('');
 
   useEffect(() => {
-    if (!token) { setStatus('missing'); return; }
+    if (!token) return;
     let cancelled = false;
     api.get('/verify-receipt', { params: { token } })
       .then(({ data }) => {
