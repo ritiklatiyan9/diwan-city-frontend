@@ -54,6 +54,7 @@ import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from '../components/ui/tooltip';
 import { Tabs, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { PREDEFINED_EXPENSE_CATEGORIES, HIDDEN_EXPENSE_CATEGORIES_KEY } from '../constants/expenseCategories';
 const PAYMENT_MODE_OPTIONS = [
   'CASH', 'UPI', 'CHEQUE', 'BANK', 'TRANSFER', 'NEFT', 'RTGS', 'IMPS', 'ADJUST',
 ];
@@ -376,9 +377,15 @@ const Expenses = () => {
     return approver?.full_name || approver?.name || approver?.email || `Admin #${assignedId}`;
   };
 
-  // Merged category list for dropdowns
+  // Merged category list for dropdowns — same predefined set shown on the
+  // Expense Categories page, minus any the admin hid there, plus custom ones.
   const allCategoryOptions = useMemo(() => {
-    return [...customExpenseCategories].sort();
+    let hidden = [];
+    try { hidden = JSON.parse(localStorage.getItem(HIDDEN_EXPENSE_CATEGORIES_KEY) || '[]'); } catch { /* ignore */ }
+    const predefinedNames = PREDEFINED_EXPENSE_CATEGORIES
+      .map((c) => c.name)
+      .filter((name) => !hidden.includes(name));
+    return [...new Set([...predefinedNames, ...customExpenseCategories])].sort();
   }, [customExpenseCategories]);
 
   const filteredCategoryOptionsForFilter = useMemo(() => {

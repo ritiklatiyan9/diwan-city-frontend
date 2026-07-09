@@ -24,6 +24,7 @@ import {
     Plus, Edit2, Loader2, Lock,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { PREDEFINED_EXPENSE_CATEGORIES, HIDDEN_EXPENSE_CATEGORIES_KEY } from '../constants/expenseCategories';
 
 // Icon / Color helpers
 const ICON_MAP = {
@@ -65,90 +66,6 @@ const GROUP_OPTIONS = [
     'Transport & Fuel', 'Financial', 'Marketing & Misc', 'Assets', 'Custom', 'Other',
 ];
 
-// Predefined categories (built-in, cannot be deleted)
-const PREDEFINED = [
-    { name: 'CONSTRUCTION', group: 'Construction & Civil', icon: 'HardHat', color: 'orange' },
-    { name: 'MATERIAL', group: 'Construction & Civil', icon: 'Package', color: 'amber' },
-    { name: 'LABOUR', group: 'Construction & Civil', icon: 'Hammer', color: 'yellow' },
-    { name: 'CEMENT', group: 'Construction & Civil', icon: 'Package', color: 'stone' },
-    { name: 'SAND', group: 'Construction & Civil', icon: 'Package', color: 'amber' },
-    { name: 'STEEL', group: 'Construction & Civil', icon: 'Package', color: 'slate' },
-    { name: 'BRICKS', group: 'Construction & Civil', icon: 'Grid3x3', color: 'red' },
-    { name: 'WOOD', group: 'Construction & Civil', icon: 'TreePine', color: 'amber' },
-    { name: 'EXCAVATION', group: 'Construction & Civil', icon: 'HardHat', color: 'orange' },
-    { name: 'EARTH WORK', group: 'Construction & Civil', icon: 'HardHat', color: 'amber' },
-    { name: 'BORING', group: 'Construction & Civil', icon: 'Cog', color: 'stone' },
-    { name: 'DEMOLITION', group: 'Construction & Civil', icon: 'Trash2', color: 'red' },
-    { name: 'PLUMBING', group: 'MEP & Finishing', icon: 'Wrench', color: 'blue' },
-    { name: 'ELECTRICAL', group: 'MEP & Finishing', icon: 'Zap', color: 'yellow' },
-    { name: 'PAINTING', group: 'MEP & Finishing', icon: 'Paintbrush', color: 'purple' },
-    { name: 'FLOORING', group: 'MEP & Finishing', icon: 'Grid3x3', color: 'stone' },
-    { name: 'TILES', group: 'MEP & Finishing', icon: 'Grid3x3', color: 'cyan' },
-    { name: 'CARPENTRY', group: 'MEP & Finishing', icon: 'Hammer', color: 'amber' },
-    { name: 'WELDING', group: 'MEP & Finishing', icon: 'Cog', color: 'orange' },
-    { name: 'FABRICATION', group: 'MEP & Finishing', icon: 'Cog', color: 'slate' },
-    { name: 'GLASS', group: 'MEP & Finishing', icon: 'Grid3x3', color: 'sky' },
-    { name: 'ALUMINIUM', group: 'MEP & Finishing', icon: 'Package', color: 'slate' },
-    { name: 'ROOFING', group: 'MEP & Finishing', icon: 'Building2', color: 'stone' },
-    { name: 'HARDWARE', group: 'MEP & Finishing', icon: 'Wrench', color: 'slate' },
-    { name: 'WATER SUPPLY', group: 'Infrastructure', icon: 'Droplets', color: 'blue' },
-    { name: 'DRAINAGE', group: 'Infrastructure', icon: 'Droplets', color: 'teal' },
-    { name: 'COMPOUND WALL', group: 'Infrastructure', icon: 'Fence', color: 'stone' },
-    { name: 'FENCING', group: 'Infrastructure', icon: 'Fence', color: 'emerald' },
-    { name: 'GATE', group: 'Infrastructure', icon: 'Building2', color: 'slate' },
-    { name: 'ROAD WORK', group: 'Infrastructure', icon: 'Truck', color: 'slate' },
-    { name: 'LANDSCAPING', group: 'Infrastructure', icon: 'TreePine', color: 'green' },
-    { name: 'ARCHITECT', group: 'Professional Services', icon: 'GraduationCap', color: 'indigo' },
-    { name: 'ENGINEER', group: 'Professional Services', icon: 'HardHat', color: 'blue' },
-    { name: 'SURVEYOR', group: 'Professional Services', icon: 'Scale', color: 'purple' },
-    { name: 'CONSULTANT', group: 'Professional Services', icon: 'Users', color: 'purple' },
-    { name: 'CONTRACTOR', group: 'Professional Services', icon: 'Handshake', color: 'amber' },
-    { name: 'LEGAL', group: 'Professional Services', icon: 'Scale', color: 'slate' },
-    { name: 'GOVERNMENT', group: 'Government & Tax', icon: 'Landmark', color: 'blue' },
-    { name: 'REGISTRATION', group: 'Government & Tax', icon: 'FileText', color: 'indigo' },
-    { name: 'STAMP DUTY', group: 'Government & Tax', icon: 'Receipt', color: 'purple' },
-    { name: 'TAX', group: 'Government & Tax', icon: 'Receipt', color: 'red' },
-    { name: 'GST', group: 'Government & Tax', icon: 'Receipt', color: 'orange' },
-    { name: 'TDS', group: 'Government & Tax', icon: 'Receipt', color: 'amber' },
-    { name: 'OFFICE', group: 'Office & Admin', icon: 'Building2', color: 'slate' },
-    { name: 'SALARY', group: 'Office & Admin', icon: 'Banknote', color: 'green' },
-    { name: 'RENT', group: 'Office & Admin', icon: 'Building2', color: 'purple' },
-    { name: 'INSURANCE', group: 'Office & Admin', icon: 'Shield', color: 'blue' },
-    { name: 'TELEPHONE', group: 'Office & Admin', icon: 'Phone', color: 'cyan' },
-    { name: 'INTERNET', group: 'Office & Admin', icon: 'Cog', color: 'indigo' },
-    { name: 'STATIONERY', group: 'Office & Admin', icon: 'Printer', color: 'slate' },
-    { name: 'PRINTING', group: 'Office & Admin', icon: 'Printer', color: 'slate' },
-    { name: 'COURIER', group: 'Office & Admin', icon: 'Send', color: 'orange' },
-    { name: 'CLEANING', group: 'Office & Admin', icon: 'SprayCan', color: 'teal' },
-    { name: 'SECURITY', group: 'Office & Admin', icon: 'Shield', color: 'slate' },
-    { name: 'TRANSPORT', group: 'Transport & Fuel', icon: 'Truck', color: 'blue' },
-    { name: 'PETROL', group: 'Transport & Fuel', icon: 'Fuel', color: 'red' },
-    { name: 'DIESEL', group: 'Transport & Fuel', icon: 'Fuel', color: 'amber' },
-    { name: 'VEHICLE', group: 'Transport & Fuel', icon: 'Car', color: 'slate' },
-    { name: 'BROKERAGE', group: 'Financial', icon: 'Handshake', color: 'amber' },
-    { name: 'COMMISSION', group: 'Financial', icon: 'CreditCard', color: 'purple' },
-    { name: 'ADVANCE', group: 'Financial', icon: 'Wallet', color: 'blue' },
-    { name: 'DEPOSIT', group: 'Financial', icon: 'Banknote', color: 'green' },
-    { name: 'REFUND', group: 'Financial', icon: 'Banknote', color: 'red' },
-    { name: 'LOAN', group: 'Financial', icon: 'Banknote', color: 'indigo' },
-    { name: 'EMI', group: 'Financial', icon: 'CreditCard', color: 'orange' },
-    { name: 'INTEREST', group: 'Financial', icon: 'CreditCard', color: 'rose' },
-    { name: 'MARKETING', group: 'Marketing & Misc', icon: 'BarChart3', color: 'pink' },
-    { name: 'ADVERTISEMENT', group: 'Marketing & Misc', icon: 'Megaphone', color: 'purple' },
-    { name: 'SOCIETY', group: 'Marketing & Misc', icon: 'Users', color: 'emerald' },
-    { name: 'DONATION', group: 'Marketing & Misc', icon: 'Gift', color: 'rose' },
-    { name: 'FOOD', group: 'Marketing & Misc', icon: 'UtensilsCrossed', color: 'amber' },
-    { name: 'REFRESHMENT', group: 'Marketing & Misc', icon: 'UtensilsCrossed', color: 'orange' },
-    { name: 'MAINTENANCE', group: 'Marketing & Misc', icon: 'Wrench', color: 'cyan' },
-    { name: 'UTILITIES', group: 'Marketing & Misc', icon: 'Zap', color: 'yellow' },
-    { name: 'MACHINERY', group: 'Assets', icon: 'Cog', color: 'slate' },
-    { name: 'EQUIPMENT', group: 'Assets', icon: 'Wrench', color: 'slate' },
-    { name: 'FURNITURE', group: 'Assets', icon: 'Armchair', color: 'amber' },
-    { name: 'FIXTURE', group: 'Assets', icon: 'Cog', color: 'stone' },
-    { name: 'MISC', group: 'Other', icon: 'HelpCircle', color: 'slate' },
-    { name: 'MISCELLANEOUS', group: 'Other', icon: 'HelpCircle', color: 'slate' },
-];
-
 const GROUP_ORDER = [
     'Construction & Civil', 'MEP & Finishing', 'Infrastructure',
     'Professional Services', 'Government & Tax', 'Office & Admin',
@@ -162,7 +79,7 @@ export const ExpenseCategories = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [customCategories, setCustomCategories] = useState([]);
     const [hiddenPredefined, setHiddenPredefined] = useState(() => {
-        try { return JSON.parse(localStorage.getItem('hidden_expense_cats') || '[]'); } catch { return []; }
+        try { return JSON.parse(localStorage.getItem(HIDDEN_EXPENSE_CATEGORIES_KEY) || '[]'); } catch { return []; }
     });
     const [loading, setLoading] = useState(false);
     const [dialogOpen, setDialogOpen] = useState(false);
@@ -190,7 +107,7 @@ export const ExpenseCategories = () => {
 
     // Merge predefined (minus hidden) + custom
     const allCategories = useMemo(() => {
-        const predefined = PREDEFINED
+        const predefined = PREDEFINED_EXPENSE_CATEGORIES
             .filter(c => !hiddenPredefined.includes(c.name))
             .map(c => ({ ...c, is_predefined: true }));
         const custom = customCategories.map(c => ({
@@ -280,7 +197,7 @@ export const ExpenseCategories = () => {
             // Hide predefined category locally
             const updated = [...hiddenPredefined, cat.name];
             setHiddenPredefined(updated);
-            localStorage.setItem('hidden_expense_cats', JSON.stringify(updated));
+            localStorage.setItem(HIDDEN_EXPENSE_CATEGORIES_KEY, JSON.stringify(updated));
             toast.success('Category removed');
             return;
         }

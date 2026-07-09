@@ -53,6 +53,7 @@ import VendorCategories from './pages/VendorCategories';
 import UserIdManagement from './pages/UserIdManagement';
 import ApprovalManager from './pages/ApprovalManager';
 import DashboardManagement from './pages/DashboardManagement';
+import VerifyReceipt from './pages/VerifyReceipt';
 import './App.css';
 import './fonts.css';
 
@@ -71,6 +72,7 @@ function App() {
           {/* Public Routes */}
           <Route path="/" element={<Landing />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/verify-receipt" element={<VerifyReceipt />} />
           <Route
             path="/vendors/payments/:paymentId/receipt"
             element={<ProtectedRoute requiredModule="vendors"><VendorPaymentReceiptPrint /></ProtectedRoute>}
