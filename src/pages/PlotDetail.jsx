@@ -27,7 +27,7 @@ import {
   Edit2, Plus, Trash2, CreditCard, TrendingUp, CheckCircle2, AlertTriangle,
   Clock, CalendarClock, Banknote, Landmark, Wallet, Percent, Hash,
   ArrowDownRight, ArrowUpRight, CircleDollarSign, ChevronDown, X, Eye, Settings, Printer,
-  Check, ChevronsUpDown, User, Search, UserPlus,
+  Check, ChevronsUpDown, User, Search, UserPlus, Handshake,
 } from 'lucide-react';
 import { Textarea } from '../components/ui/textarea';
 import VoucherUpload, { VoucherThumbnail } from '../components/VoucherUpload';
@@ -1231,6 +1231,36 @@ export default function PlotDetail() {
           </CardContent>
         </Card>
       </div>
+
+      {/* ── Company vs Party Price (Broker Margin) ── shown only when set ── */}
+      {(() => {
+        const companyPrice = parseFloat(plot?.company_price) || 0;
+        const partyPrice = parseFloat(plot?.party_price) || 0;
+        if (companyPrice <= 0 && partyPrice <= 0) return null;
+        const margin = partyPrice - companyPrice;
+        const hasBoth = companyPrice > 0 && partyPrice > 0;
+        const marginPct = companyPrice > 0 ? (margin / companyPrice) * 100 : 0;
+        return (
+          <Card className="shadow-none border-indigo-200 bg-indigo-50/20">
+            <CardContent className="p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-6 h-6 rounded-md bg-indigo-100 flex items-center justify-center"><Handshake className="w-3 h-3 text-indigo-700" /></div>
+                <p className="text-xs font-bold text-indigo-900 uppercase tracking-wide">Broker Margin</p>
+                {hasBoth && (
+                  <span className={`ml-auto text-[10px] font-semibold px-2 py-0.5 rounded-full border ${margin >= 0 ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-red-100 text-red-700 border-red-200'}`}>
+                    {marginPct >= 0 ? '+' : ''}{marginPct.toFixed(1)}%
+                  </span>
+                )}
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div><p className="text-[9px] uppercase tracking-wider text-indigo-400 font-medium text-nowrap">Company Price</p><p className="text-sm font-bold text-slate-800">₹{fmt(companyPrice)}</p></div>
+                <div><p className="text-[9px] uppercase tracking-wider text-indigo-400 font-medium text-nowrap">Party Price</p><p className="text-sm font-bold text-slate-800">₹{fmt(partyPrice)}</p></div>
+                <div><p className="text-[9px] uppercase tracking-wider text-indigo-400 font-medium text-nowrap">Margin</p><p className={`text-sm font-bold ${!hasBoth ? 'text-slate-400' : margin >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{hasBoth ? `₹${fmt(margin)}` : '—'}</p></div>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* ── Bank / Cash Split ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

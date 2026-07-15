@@ -41,7 +41,7 @@ import {
   Banknote, Hash, FileText, User, Tag, Percent,
   Filter, X, Download, Printer, MapPin, Ruler, BarChart3,
   Landmark, Wallet, CircleDollarSign, Camera, Clock, Send, ChevronsUpDown,
-  ArrowUpDown, ClipboardList, UserPlus,
+  ArrowUpDown, ClipboardList, UserPlus, Handshake,
 } from 'lucide-react';
 import VoucherUpload, { VoucherThumbnail } from '../components/VoucherUpload';
 import ApprovalStatusBadge from '../components/ApprovalStatusBadge';
@@ -430,7 +430,7 @@ const PlotPayments = () => {
   // Plot form
   const [plotForm, setPlotForm] = useState({
     plot_no: '', block: '', buyer_name: '', plot_size: '', plot_size_mtr: '', plot_rate: '',
-    sale_price: '', registry_area: '', circle_rate: '', to_receive_bank: '',
+    sale_price: '', company_price: '', party_price: '', registry_area: '', circle_rate: '', to_receive_bank: '',
     first_installment: '', booking_by: '', booking_date: todayISO(), status: 'COMPANY', notes: '',
     team: '',
     commission_enabled: false, commission_type: 'PERCENTAGE', commission_value: '',
@@ -570,7 +570,7 @@ const PlotPayments = () => {
   const resetPlotForm = () => {
     setPlotForm({
       plot_no: '', block: '', buyer_name: '', plot_size: '', plot_size_mtr: '', plot_rate: '',
-      sale_price: '', registry_area: '', circle_rate: '', to_receive_bank: '',
+      sale_price: '', company_price: '', party_price: '', registry_area: '', circle_rate: '', to_receive_bank: '',
       first_installment: '', booking_by: '', booking_date: todayISO(), status: 'COMPANY', notes: '',
       team: '',
       commission_enabled: false, commission_type: 'PERCENTAGE', commission_value: '',
@@ -614,6 +614,8 @@ const PlotPayments = () => {
       plot_size_mtr: p.plot_size_mtr ? String(p.plot_size_mtr) : '',
       plot_rate: (parseFloat(p.original_plot_rate) > 0 ? String(p.original_plot_rate) : '') || (p.plot_rate ? String(p.plot_rate) : ''),
       sale_price: p.sale_price ? String(p.sale_price) : '',
+      company_price: parseFloat(p.company_price) > 0 ? String(p.company_price) : '',
+      party_price: parseFloat(p.party_price) > 0 ? String(p.party_price) : '',
       registry_area: p.registry_area ? String(p.registry_area) : '',
       circle_rate: p.circle_rate ? String(p.circle_rate) : '',
       to_receive_bank: p.to_receive_bank ? String(p.to_receive_bank) : '',
@@ -671,6 +673,8 @@ const PlotPayments = () => {
         original_plot_rate: origRate,
         plot_rate: discountVal > 0 ? effectivePlotRate : origRate,
         sale_price: discountedSalePrice,
+        company_price: parseFloat(plotForm.company_price) || 0,
+        party_price: parseFloat(plotForm.party_price) || 0,
       };
 
       // Attach registry fields when status is REGISTRY
@@ -2195,6 +2199,53 @@ const PlotPayments = () => {
                   );
                 })()}
               </div>
+
+              {/* Pricing Row 1b: Company Price vs Party Price (broker margin) */}
+              {(() => {
+                const company = parseFloat(plotForm.company_price) || 0;
+                const party = parseFloat(plotForm.party_price) || 0;
+                const margin = party - company;
+                const hasBoth = company > 0 && party > 0;
+                const marginPct = company > 0 ? ((margin / company) * 100) : 0;
+                return (
+                  <div className="rounded-lg border border-indigo-200 bg-indigo-50/30 p-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Handshake className="w-3.5 h-3.5 text-indigo-600" />
+                      <p className="text-xs font-semibold text-indigo-800">Company Price vs Party Price (Broker Margin)</p>
+                      {hasBoth && (
+                        <Badge className={`text-[9px] ml-auto border ${margin >= 0 ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-red-100 text-red-700 border-red-200'}`}>
+                          Margin ₹{fmt(Math.abs(margin))}{company > 0 ? ` · ${marginPct >= 0 ? '+' : ''}${marginPct.toFixed(1)}%` : ''}
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-medium">Company Price (₹)</Label>
+                        <Input type="number" step="0.01" min="0" placeholder="e.g. 2000000"
+                          value={plotForm.company_price}
+                          onChange={(e) => setPlotForm((prev) => ({ ...prev, company_price: e.target.value }))} />
+                        <p className="text-[10px] text-indigo-500">Price the company/owner sets (given to broker)</p>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-medium">Party Price (₹)</Label>
+                        <Input type="number" step="0.01" min="0" placeholder="e.g. 2500000"
+                          value={plotForm.party_price}
+                          onChange={(e) => setPlotForm((prev) => ({ ...prev, party_price: e.target.value }))} />
+                        <p className="text-[10px] text-indigo-500">Price broker sells to the client</p>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-medium">Broker Margin (₹)</Label>
+                        <div className={`h-9 flex items-center px-3 rounded-md border font-semibold text-sm ${hasBoth ? (margin >= 0 ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-red-50 border-red-200 text-red-700') : 'bg-slate-50 border-slate-200 text-slate-400'}`}>
+                          {hasBoth ? `₹${fmt(margin)}` : '—'}
+                        </div>
+                        {hasBoth && (
+                          <p className="text-[10px] text-indigo-500">₹{fmt(party)} − ₹{fmt(company)} = ₹{fmt(margin)}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Pricing Row 2: Plot Commission = Size (Gaz) × Commission Rate */}
               <div className="rounded-lg border border-amber-200 bg-amber-50/30 p-4 space-y-3">
