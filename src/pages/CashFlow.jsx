@@ -101,6 +101,7 @@ const CashFlow = () => {
   const [ledgerForm, setLedgerForm] = useState({
     ledger_name: '',
   });
+  const [editingLedgerId, setEditingLedgerId] = useState(null); // null = create
 
   // Entry form
   const [entryForm, setEntryForm] = useState({
@@ -257,6 +258,14 @@ const CashFlow = () => {
 
   const handleOpenCreateLedger = () => {
     resetLedgerForm();
+    setEditingLedgerId(null);
+    setLedgerDialogOpen(true);
+  };
+
+  const handleOpenEditLedger = (ledger) => {
+    setMessage({ type: '', text: '' });
+    setLedgerForm({ ledger_name: ledger.ledger_name || '' });
+    setEditingLedgerId(ledger.id);
     setLedgerDialogOpen(true);
   };
 
@@ -271,6 +280,19 @@ const CashFlow = () => {
 
     setSubmitting(true);
     try {
+      if (editingLedgerId) {
+        // Rename only — opening_balance/notes/is_locked are managed elsewhere,
+        // and updateMonth patches just the keys it is sent.
+        const name = ledgerForm.ledger_name.trim().toUpperCase();
+        const { data } = await api.put(`/cashflow/months/${editingLedgerId}`, { ledger_name: name });
+        setLedgers((prev) => prev.map((l) => (l.id === editingLedgerId ? { ...l, ...(data?.month || { ledger_name: name }) } : l)));
+        setMessage({ type: 'success', text: 'Ledger renamed' });
+        setLedgerDialogOpen(false);
+        setEditingLedgerId(null);
+        refreshLedgers();
+        return;
+      }
+
       const currentDate = new Date();
       const payload = {
         site_id: siteId,
@@ -299,9 +321,44 @@ const CashFlow = () => {
       setLedgerDialogOpen(false);
       refreshLedgers(); // reconcile with server-computed totals
     } catch (err) {
-      setMessage({ type: 'error', text: err.response?.data?.message || 'Failed to create ledger' });
+      setMessage({ type: 'error', text: err.response?.data?.message || `Failed to ${editingLedgerId ? 'rename' : 'create'} ledger` });
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  /**
+   * Deleting a ledger CASCADES every entry inside it (FK ON DELETE CASCADE) and
+   * the DB triggers then remove their cash-flow mirrors — unrecoverable. So the
+   * confirm names the ledger and its entry count rather than asking a generic
+   * "are you sure?", and a ledger with entries needs the name typed back.
+   */
+  const handleDeleteLedger = async (ledger) => {
+    const count = parseInt(ledger.entry_count) || 0;
+    if (count > 0) {
+      const typed = window.prompt(
+        `"${ledger.ledger_name}" has ${count} ${count === 1 ? 'entry' : 'entries'}.\n` +
+        `Deleting the ledger permanently deletes all ${count} of them. This cannot be undone.\n\n` +
+        `Type the ledger name to confirm:`
+      );
+      if (typed === null) return;
+      if (typed.trim().toUpperCase() !== String(ledger.ledger_name || '').trim().toUpperCase()) {
+        setMessage({ type: 'error', text: 'Name did not match — ledger not deleted' });
+        return;
+      }
+    } else if (!window.confirm(`Delete the empty ledger "${ledger.ledger_name}"?`)) {
+      return;
+    }
+
+    const snapshot = ledgers;
+    setLedgers((prev) => prev.filter((l) => l.id !== ledger.id));
+    try {
+      await api.delete(`/cashflow/months/${ledger.id}`);
+      setMessage({ type: 'success', text: `Ledger "${ledger.ledger_name}" deleted` });
+      refreshLedgers();
+    } catch (err) {
+      setLedgers(snapshot); // rollback
+      setMessage({ type: 'error', text: err.response?.data?.message || 'Failed to delete ledger' });
     }
   };
 
@@ -1802,6 +1859,25 @@ const CashFlow = () => {
                       >
                         Open
                       </Button>
+                      {/* stopPropagation on each — the row itself navigates. */}
+                      {canUpdate && (
+                        <Button
+                          variant="ghost" size="sm" title="Rename ledger"
+                          className="h-7 w-7 p-0 ml-1 text-slate-400 hover:text-slate-700"
+                          onClick={(e) => { e.stopPropagation(); handleOpenEditLedger(ledger); }}
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </Button>
+                      )}
+                      {canDelete && (
+                        <Button
+                          variant="ghost" size="sm" title="Delete ledger and all its entries"
+                          className="h-7 w-7 p-0 text-slate-400 hover:text-red-600"
+                          onClick={(e) => { e.stopPropagation(); handleDeleteLedger(ledger); }}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      )}
                     </TableCell>
                   </TableRow>
                 );
@@ -1856,12 +1932,14 @@ const CashFlow = () => {
       )}
 
       {/* Ledger Dialog */}
-      <Dialog open={ledgerDialogOpen} onOpenChange={(open) => { setLedgerDialogOpen(open); if (!open) resetLedgerForm(); }}>
+      <Dialog open={ledgerDialogOpen} onOpenChange={(open) => { setLedgerDialogOpen(open); if (!open) { resetLedgerForm(); setEditingLedgerId(null); } }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-base">Create Person Ledger</DialogTitle>
+            <DialogTitle className="text-base">{editingLedgerId ? 'Rename Ledger' : 'Create Person Ledger'}</DialogTitle>
             <DialogDescription className="text-sm">
-              Create a new ledger for tracking cash flow with a person or entity. You can add entries from any date range to this ledger.
+              {editingLedgerId
+                ? 'Rename this ledger. Its entries and balances are not affected.'
+                : 'Create a new ledger for tracking cash flow with a person or entity. You can add entries from any date range to this ledger.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -1888,15 +1966,17 @@ const CashFlow = () => {
               <p className="text-[10px] text-slate-400">Enter the name of the person or entity this ledger is for</p>
             </div>
 
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-              <p className="text-xs font-medium text-blue-900 mb-2">ℹ️ How it works:</p>
-              <ul className="text-xs text-blue-800 space-y-1">
-                <li>• Create a ledger for each person/entity you track</li>
-                <li>• Add entries from any date (not limited by month)</li>
-                <li>• Track money given (Debit) and returned (Credit)</li>
-                <li>• Pending = Total Given - Total Returned</li>
-              </ul>
-            </div>
+            {!editingLedgerId && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-xs font-medium text-blue-900 mb-2">ℹ️ How it works:</p>
+                <ul className="text-xs text-blue-800 space-y-1">
+                  <li>• Create a ledger for each person/entity you track</li>
+                  <li>• Add entries from any date (not limited by month)</li>
+                  <li>• Track money given (Debit) and returned (Credit)</li>
+                  <li>• Pending = Total Given - Total Returned</li>
+                </ul>
+              </div>
+            )}
 
             <DialogFooter>
               <Button type="button" variant="outline" size="sm" onClick={() => setLedgerDialogOpen(false)} disabled={submitting}>
@@ -1906,10 +1986,10 @@ const CashFlow = () => {
                 {submitting ? (
                   <>
                     <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
-                    Creating...
+                    {editingLedgerId ? 'Saving...' : 'Creating...'}
                   </>
                 ) : (
-                  'Create Ledger'
+                  editingLedgerId ? 'Save Name' : 'Create Ledger'
                 )}
               </Button>
             </DialogFooter>

@@ -5,6 +5,7 @@ import api from '../api/api';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
 import { Badge } from '../components/ui/badge';
 import {
   Table,
@@ -80,6 +81,58 @@ const PlotCommissionList = () => {
     fetchCommissions();
   }, [fetchCommissions]);
 
+  // ── Edit / Delete a commission master ──
+  const [editTarget, setEditTarget] = useState(null);   // the grouped row
+  const [editForm, setEditForm] = useState({ total_commission: '', remarks: '' });
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  const handleOpenEdit = (g) => {
+    setEditForm({
+      total_commission: g.total_commission != null ? String(g.total_commission) : '',
+      remarks: '',
+    });
+    setEditTarget(g);
+  };
+
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    const amount = parseFloat(editForm.total_commission);
+    if (!Number.isFinite(amount) || amount < 0) return toast.error('Enter a valid commission amount');
+    if (!editTarget?.latest_commission_id) return toast.error('This plot has no commission record to edit');
+
+    setSaving(true);
+    try {
+      // PUT /:id overwrites BOTH fields (it is not a patch), so always send both.
+      await api.put(`/plot-commission/${editTarget.latest_commission_id}`, {
+        total_commission: amount,
+        remarks: editForm.remarks?.trim() || null,
+      });
+      toast.success(`Commission updated for plot ${editTarget.plot_no}`);
+      setEditTarget(null);
+      fetchCommissions();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to update commission');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget?.latest_commission_id) return toast.error('This plot has no commission record to delete');
+    setSaving(true);
+    try {
+      await api.delete(`/plot-commission/${deleteTarget.latest_commission_id}`);
+      toast.success(`Commission deleted for plot ${deleteTarget.plot_no}`);
+      setDeleteTarget(null);
+      fetchCommissions();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to delete commission');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   // Filtering — search across plot_no, buyer_name, latest_agent_name, AND all_agent_names + status filters
   const filteredCommissions = useMemo(() => {
     let list = commissions.filter((c) => {
@@ -153,6 +206,9 @@ const PlotCommissionList = () => {
       group.latest_agent_name = latest.latest_agent_name;
       group.latest_agent_phone = latest.latest_agent_phone;
       group.latest_status = latest.latest_status;
+      // The commission-master id — the key PUT/DELETE /plot-commission/:id need.
+      // The list payload only exposes the latest master per plot.
+      group.latest_commission_id = latest.latest_commission_id;
       group.all_agent_names = [...new Set(group.entries.flatMap(e => (e.all_agent_names || '').split(', ').filter(Boolean)))].join(', ');
       group.commission_count = group.entries.length;
     }
@@ -602,6 +658,30 @@ const PlotCommissionList = () => {
                             >
                               <Eye className="w-4 h-4" />
                             </Button>
+                            {/* Edit/Delete act on the LATEST commission master
+                                for this plot. A resale row groups several
+                                masters but the list payload only carries
+                                latest_commission_id, so older ones stay
+                                editable from the detail page only — hence the
+                                hint in the dialog. */}
+                            {canUpdate && (
+                              <Button
+                                variant="ghost" size="icon" title="Edit commission"
+                                className="h-8 w-8 text-slate-400 hover:text-blue-600 hover:bg-blue-50"
+                                onClick={(e) => { e.stopPropagation(); handleOpenEdit(g); }}
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </Button>
+                            )}
+                            {canDelete && (
+                              <Button
+                                variant="ghost" size="icon" title="Delete commission"
+                                className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50"
+                                onClick={(e) => { e.stopPropagation(); setDeleteTarget(g); }}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -629,6 +709,94 @@ const PlotCommissionList = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* ── Edit commission ── */}
+      <Dialog open={!!editTarget} onOpenChange={(o) => !o && !saving && setEditTarget(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base">Edit Commission · Plot {editTarget?.plot_no}</DialogTitle>
+            <DialogDescription className="text-sm">
+              {editTarget?.latest_agent_name
+                ? <>Agent <span className="font-medium text-slate-700">{editTarget.latest_agent_name}</span>. Payments already recorded are not changed.</>
+                : 'Payments already recorded are not changed.'}
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleEditSubmit} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Total Commission (₹) *</Label>
+              <Input
+                type="number" step="0.01" min="0" required autoFocus
+                value={editForm.total_commission}
+                onChange={(e) => setEditForm((p) => ({ ...p, total_commission: e.target.value }))}
+              />
+              {editTarget?.total_paid > 0 && (
+                <p className="text-[10px] text-slate-400">
+                  ₹{Number(editTarget.total_paid).toLocaleString('en-IN')} already paid against this plot.
+                </p>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Remarks</Label>
+              <Input
+                placeholder="Optional note"
+                value={editForm.remarks}
+                onChange={(e) => setEditForm((p) => ({ ...p, remarks: e.target.value }))}
+              />
+            </div>
+            {editTarget?.commission_count > 1 && (
+              <div className="flex gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-[11px] text-amber-800">
+                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>
+                  This plot has {editTarget.commission_count} bookings (resale). Only the newest agent&apos;s
+                  commission is edited here — open the plot to edit the others.
+                </span>
+              </div>
+            )}
+            <DialogFooter>
+              <Button type="button" variant="outline" size="sm" disabled={saving} onClick={() => setEditTarget(null)}>Cancel</Button>
+              <Button type="submit" size="sm" disabled={saving}>
+                {saving ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />Saving...</> : 'Save Changes'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Delete commission ── */}
+      <Dialog open={!!deleteTarget} onOpenChange={(o) => !o && !saving && setDeleteTarget(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base">Delete commission for plot {deleteTarget?.plot_no}?</DialogTitle>
+            <DialogDescription className="text-sm">
+              This permanently deletes the commission for
+              {' '}<span className="font-medium text-slate-700">{deleteTarget?.latest_agent_name || 'this agent'}</span>
+              {' '}and every payment recorded against it. It cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          {/* Delete cascades to plot_commission_payments and their cash-flow
+              mirrors, so name the money at risk rather than a bare "are you sure?". */}
+          {deleteTarget?.total_paid > 0 && (
+            <div className="flex gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>
+                <span className="font-semibold">₹{Number(deleteTarget.total_paid).toLocaleString('en-IN')}</span> has
+                already been paid against this commission. Those payment records and their cash-flow entries
+                will be deleted too.
+              </span>
+            </div>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="outline" size="sm" disabled={saving} onClick={() => setDeleteTarget(null)}>Cancel</Button>
+            <Button
+              type="button" size="sm" disabled={saving}
+              className="bg-red-600 text-white hover:bg-red-700"
+              onClick={handleDeleteConfirm}
+            >
+              {saving ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />Deleting...</> : 'Delete Commission'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -55,7 +55,6 @@ import {
   Circle,
   Wallet,
   Landmark,
-  Sparkles,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import ChequeStatusControl from '../components/ChequeStatusControl';
@@ -862,12 +861,11 @@ const PlotCommissionDetail = () => {
     : 0;
   const isOverpaid = totals.total_paid > totals.total_commission;
 
-  // Cross-cycle grand totals — commission is fixed per plot, paid only from current booking
-  const fixedCommission = parseFloat(plot.plot_commission) || totals.total_commission;
-  // Only count paid from the CURRENT booking (current agents' actual payments)
-  const grandTotalPaid = totals.total_paid;
-  const grandTotalCommission = fixedCommission;
-  const grandRemaining = grandTotalCommission - grandTotalPaid;
+  // The gap between the two bases the API returns: total_paid is approved-only,
+  // total_paid_all also counts entries still awaiting approval — and `balance`
+  // is derived from the latter. Naming this slice is what makes
+  // paid + remaining = total reconcile on screen.
+  const awaitingApproval = Math.max(0, (parseFloat(totals.total_paid_all) || 0) - (parseFloat(totals.total_paid) || 0));
 
   return (
     <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-50 via-emerald-50/40 to-cyan-100/40 p-3 sm:p-5">
@@ -938,10 +936,6 @@ const PlotCommissionDetail = () => {
               </div>
             </div>
 
-            <div className="mt-4 flex items-center gap-2 text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2">
-              <Sparkles className="w-3.5 h-3.5 shrink-0" />
-              Manage payout and money-back entries from the same ledger with full approval workflow.
-            </div>
           </CardContent>
         </Card>
 
@@ -961,24 +955,38 @@ const PlotCommissionDetail = () => {
           <Card className="border-emerald-200 bg-emerald-50/70 shadow-sm">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
-                <p className="text-[11px] uppercase tracking-wider text-emerald-700 font-semibold">Net Paid Out</p>
+                <p className="text-[11px] uppercase tracking-wider text-emerald-700 font-semibold">Paid Out</p>
                 <ArrowUpRight className="w-4 h-4 text-emerald-600" />
               </div>
               <p className={`text-2xl font-bold mt-2 tabular-nums ${isOverpaid ? 'text-red-600' : 'text-emerald-700'}`}>₹{formatCurrency(totals.total_paid)}</p>
-              <p className={`text-[11px] font-medium mt-1 ${isOverpaid ? 'text-red-500' : 'text-emerald-700/80'}`}>{completionPercentage}% completion</p>
+              {/* Paid + Remaining only reconcile against the total once the
+                  awaiting-approval slice is named: the headline is approved-only
+                  (total_paid) while Remaining is computed off total_paid_all. */}
+              <p className={`text-[11px] font-medium mt-1 ${isOverpaid ? 'text-red-500' : 'text-emerald-700/80'}`}>
+                approved
+                {awaitingApproval > 0 && <> · ₹{formatCurrency(awaitingApproval)} awaiting approval</>}
+              </p>
+              <div className="h-1.5 rounded-full bg-emerald-100 mt-2.5 overflow-hidden">
+                <div
+                  className={`h-full transition-all duration-500 ${isOverpaid ? 'bg-red-500' : completionPercentage >= 100 ? 'bg-emerald-500' : 'bg-cyan-500'}`}
+                  style={{ width: `${Math.min(completionPercentage, 100)}%` }}
+                />
+              </div>
             </CardContent>
           </Card>
 
           <Card className="border-amber-200 bg-amber-50/70 shadow-sm">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
-                <p className="text-[11px] uppercase tracking-wider text-amber-700 font-semibold">{isOverpaid ? 'Excess Paid' : 'Pending Amount'}</p>
+                <p className="text-[11px] uppercase tracking-wider text-amber-700 font-semibold">{isOverpaid ? 'Excess Paid' : 'Remaining'}</p>
                 <Wallet className="w-4 h-4 text-amber-600" />
               </div>
               <p className={`text-2xl font-bold mt-2 tabular-nums ${isOverpaid ? 'text-red-600' : totals.balance <= 0 ? 'text-emerald-600' : 'text-amber-700'}`}>
                 ₹{formatCurrency(Math.abs(totals.balance))}
               </p>
-              <p className="text-[11px] text-amber-700/80 mt-1">After approved + pending entries</p>
+              <p className="text-[11px] text-amber-700/80 mt-1">
+                {awaitingApproval > 0 ? 'after approved + awaiting' : 'still to pay'}
+              </p>
             </CardContent>
           </Card>
 
@@ -993,31 +1001,6 @@ const PlotCommissionDetail = () => {
             </CardContent>
           </Card>
         </div>
-
-        <Card className="border-slate-200 bg-white/90 overflow-hidden shadow-sm">
-          <CardContent className="p-0">
-            <div className="h-2 bg-slate-100">
-              <div
-                className={`h-full transition-all duration-500 ${isOverpaid ? 'bg-red-500' : completionPercentage >= 100 ? 'bg-emerald-500' : 'bg-cyan-500'}`}
-                style={{ width: `${Math.min(completionPercentage, 100)}%` }}
-              />
-            </div>
-            {timeline && timeline.length > 1 ? (
-              <div className="px-4 py-3 flex flex-wrap items-center gap-x-6 gap-y-1 text-[11px]">
-                <span className="text-slate-500 font-semibold uppercase tracking-wider text-[9px]">Fixed Plot Commission</span>
-                <span className="text-slate-600">Commission: <strong className="text-slate-800">₹{formatCurrency(grandTotalCommission)}</strong></span>
-                <span className="text-slate-600">Net Paid: <strong className="text-emerald-700">₹{formatCurrency(grandTotalPaid)}</strong></span>
-                <span className="text-slate-600">Remaining: <strong className={grandRemaining > 0 ? 'text-amber-700' : 'text-emerald-700'}>₹{formatCurrency(Math.abs(grandRemaining))}</strong></span>
-                <span className="text-[9px] text-slate-400 ml-auto">{timeline.length} booking cycles</span>
-              </div>
-            ) : (
-              <div className="px-4 py-3 flex items-center gap-2 text-[11px] text-slate-600">
-                <Landmark className="w-3.5 h-3.5 text-slate-400" />
-                Progress reflects all entries in this booking, including money-back adjustments.
-              </div>
-            )}
-          </CardContent>
-        </Card>
 
       {/* ── Plot History (Accordion) ── */}
       {timeline && timeline.length > 1 && (
@@ -1181,7 +1164,6 @@ const PlotCommissionDetail = () => {
           </div>
           <h2 className="text-sm font-semibold text-slate-800">Commission Agents</h2>
           <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-slate-600 border-slate-300">{agents.length}</Badge>
-          <span className="ml-auto text-[11px] text-slate-500">Use Pay for payout and Get Money for recovery</span>
         </div>
 
         {/* Vertical parcel-shipping timeline */}
