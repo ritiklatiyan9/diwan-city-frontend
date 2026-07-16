@@ -46,16 +46,47 @@ import {
 import VoucherUpload, { VoucherThumbnail } from '../components/VoucherUpload';
 import ApprovalStatusBadge from '../components/ApprovalStatusBadge';
 import ChequeStatusControl from '../components/ChequeStatusControl';
+import { PAYMENT_FROM_OPTIONS, derivePaymentType } from '../constants/paymentOptions';
+import { mul, diverges, resolveSalePrice } from '../utils/plotPricing';
 
 // ── Constants ──
-const PAYMENT_FROM_OPTIONS = [
-  'BOOKING', 'CASH', 'BANK', 'TRANSFER', 'CHEQUE', 'UPI',
-  'NEFT', 'RTGS', 'IMPS', 'ADJUST', 'RETURN', 'REFUND',
-];
+// Literal class strings per tone — Tailwind's scanner cannot see interpolated names.
+const DERIVED_TONES = {
+  emerald: { auto: 'bg-emerald-50', hint: 'text-emerald-600', link: 'text-emerald-700 hover:text-emerald-900' },
+  amber: { auto: 'bg-amber-50', hint: 'text-amber-600', link: 'text-amber-700 hover:text-amber-900' },
+  blue: { auto: 'bg-blue-50', hint: 'text-blue-600', link: 'text-blue-700 hover:text-blue-900' },
+  indigo: { auto: 'bg-indigo-50', hint: 'text-indigo-600', link: 'text-indigo-700 hover:text-indigo-900' },
+};
 
-// FROM modes that count as BANK payment type
-const BANK_TYPE_FROMS = ['BANK', 'TRANSFER', 'CHEQUE', 'UPI', 'NEFT', 'RTGS', 'IMPS'];
-const derivePaymentType = (from) => from === 'CHEQUE' ? 'CHEQUE' : BANK_TYPE_FROMS.includes(from) ? 'BANK' : 'CASH';
+/**
+ * A money field that auto-calculates from a formula but stays editable. Typing
+ * in it pauses the formula for that field only (see `manualFields`); "Reset to
+ * auto" hands control back and recomputes.
+ */
+const DerivedMoneyInput = ({
+  label, tone = 'emerald', value, manual, onChange, onReset, autoHint,
+  placeholder = 'Auto-calculated', ...rest
+}) => {
+  const t = DERIVED_TONES[tone] || DERIVED_TONES.emerald;
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between gap-2 min-h-[16px]">
+        <Label className="text-xs font-medium">{label}</Label>
+        {manual && (
+          <button type="button" onClick={onReset}
+            className={`text-[9px] font-semibold underline underline-offset-2 ${t.link}`}>
+            Reset to auto
+          </button>
+        )}
+      </div>
+      <Input type="number" step="0.01" placeholder={placeholder} value={value} onChange={onChange}
+        className={`font-semibold ${manual ? 'border-amber-400 bg-white' : t.auto}`} {...rest} />
+      {manual
+        ? <p className="text-[10px] font-medium text-amber-600">Manually set — formula paused</p>
+        : autoHint ? <p className={`text-[10px] ${t.hint}`}>{autoHint}</p> : null}
+    </div>
+  );
+};
 
 const INTEREST_TYPES = [
   { value: 'per_day', label: 'Per Day' },
@@ -448,9 +479,13 @@ const PlotPayments = () => {
   }, [listSearch]);
 
   // Plot form
+  // company_rate / party_rate are UI-only helpers (₹ per Gaz) that drive
+  // company_price / party_price. They have no DB column; createPlot/updatePlot
+  // destructure req.body explicitly, so the extra keys are ignored server-side.
   const [plotForm, setPlotForm] = useState({
     plot_no: '', block: '', buyer_name: '', plot_size: '', plot_size_mtr: '', plot_rate: '',
-    sale_price: '', company_price: '', party_price: '', registry_area: '', circle_rate: '', to_receive_bank: '',
+    sale_price: '', company_rate: '', company_price: '', party_rate: '', party_price: '',
+    registry_area: '', circle_rate: '', to_receive_bank: '',
     first_installment: '', booking_by: '', booking_date: todayISO(), status: 'COMPANY', notes: '',
     team: '',
     commission_enabled: false, commission_type: 'PERCENTAGE', commission_value: '',
@@ -493,23 +528,45 @@ const PlotPayments = () => {
   // Skip auto-compute on first render after loading edit data (preserves prefilled values)
   const skipAutoCompute = useRef(false);
 
-  // Auto-compute: Sale Price, Plot Commission, Bank Amount (single merged effect)
+  // Derived money fields the user has typed into by hand. Auto-compute leaves
+  // these alone until "Auto" is clicked. Required because the effect below
+  // recomputes ALL derived fields whenever ANY of its inputs change — without
+  // this, editing Circle Rate would silently wipe a hand-set Sale Price.
+  const [manualFields, setManualFields] = useState({});
+  const isManual = (field) => !!manualFields[field];
+  // onChange for a derived field: remember the override, then store the value.
+  const handleDerivedChange = (field) => (e) => {
+    const { value } = e.target;
+    setManualFields((prev) => (prev[field] ? prev : { ...prev, [field]: true }));
+    setPlotForm((prev) => ({ ...prev, [field]: value }));
+  };
+  // Hand control back to the formula and recompute immediately.
+  const resetDerived = (field) => setManualFields((prev) => {
+    if (!prev[field]) return prev;
+    const next = { ...prev };
+    delete next[field];
+    return next;
+  });
+
+  // Auto-compute: Sale Price, Plot Commission, Bank Amount, Company/Party Price
+  // (single merged effect). Each field is skipped once manually overridden.
   useEffect(() => {
     if (skipAutoCompute.current) { skipAutoCompute.current = false; return; }
     const updates = {};
-    const size = parseFloat(plotForm.plot_size);
-    const rate = parseFloat(plotForm.plot_rate);
-    const computedSale = Number.isFinite(size) && Number.isFinite(rate) ? String((size * rate).toFixed(2)) : '';
-    if (plotForm.sale_price !== computedSale) updates.sale_price = computedSale;
-    const cRate = parseFloat(plotForm.commission_rate);
-    const computedComm = Number.isFinite(size) && Number.isFinite(cRate) ? String((size * cRate).toFixed(2)) : '';
-    if (plotForm.plot_commission !== computedComm) updates.plot_commission = computedComm;
-    const sizeMtr = parseFloat(plotForm.plot_size_mtr);
-    const circleRate = parseFloat(plotForm.circle_rate);
-    const computedBank = Number.isFinite(sizeMtr) && Number.isFinite(circleRate) ? String((circleRate * sizeMtr).toFixed(2)) : '';
-    if (plotForm.to_receive_bank !== computedBank) updates.to_receive_bank = computedBank;
+    const put = (field, computed) => {
+      if (manualFields[field]) return;              // user owns this field
+      if (plotForm[field] !== computed) updates[field] = computed;
+    };
+    put('sale_price', mul(plotForm.plot_size, plotForm.plot_rate));
+    put('plot_commission', mul(plotForm.plot_size, plotForm.commission_rate));
+    put('to_receive_bank', mul(plotForm.plot_size_mtr, plotForm.circle_rate));
+    // Company/Party price come from a per-gaz rate × size. The rates are UI-only
+    // helpers (no DB column), so an empty rate must leave the stored price
+    // untouched rather than blanking it — hence the guard.
+    if (plotForm.company_rate !== '' && plotForm.company_rate != null) put('company_price', mul(plotForm.plot_size, plotForm.company_rate));
+    if (plotForm.party_rate !== '' && plotForm.party_rate != null) put('party_price', mul(plotForm.plot_size, plotForm.party_rate));
     if (Object.keys(updates).length > 0) setPlotForm((prev) => ({ ...prev, ...updates }));
-  }, [plotForm.plot_size, plotForm.plot_rate, plotForm.plot_size_mtr, plotForm.circle_rate, plotForm.commission_rate]);
+  }, [plotForm.plot_size, plotForm.plot_rate, plotForm.plot_size_mtr, plotForm.circle_rate, plotForm.commission_rate, plotForm.company_rate, plotForm.party_rate, manualFields]);
 
   // Payment form
   const [payMode, setPayMode] = useState('receive'); // 'receive' | 'refund'
@@ -588,9 +645,11 @@ const PlotPayments = () => {
 
   // ── Plot form handlers ──
   const resetPlotForm = () => {
+    setManualFields({});
     setPlotForm({
       plot_no: '', block: '', buyer_name: '', plot_size: '', plot_size_mtr: '', plot_rate: '',
-      sale_price: '', company_price: '', party_price: '', registry_area: '', circle_rate: '', to_receive_bank: '',
+      sale_price: '', company_rate: '', company_price: '', party_rate: '', party_price: '',
+      registry_area: '', circle_rate: '', to_receive_bank: '',
       first_installment: '', booking_by: '', booking_date: todayISO(), status: 'COMPANY', notes: '',
       team: '',
       commission_enabled: false, commission_type: 'PERCENTAGE', commission_value: '',
@@ -628,12 +687,30 @@ const PlotPayments = () => {
     const block = sanitizeBlock(p.block || String(p.plot_no || '').replace(/[^A-Za-z]/g, ''));
     const numberPart = extractPlotNumber(p.plot_no || '');
     skipAutoCompute.current = true;
+
+    // A stored value that already diverges from its formula was set by hand
+    // (or predates a rate change) — keep it that way, otherwise editing any
+    // input here would silently overwrite real data with the formula result.
+    // sale_price MUST be compared against p.plot_rate — the stored EFFECTIVE
+    // (post-discount) rate that actually produced it. Comparing against
+    // original_plot_rate marks every discounted plot as hand-set, which freezes
+    // Sale Price and turns the discount into a no-op.
+    const size = p.plot_size ? String(p.plot_size) : '';
+    setManualFields({
+      ...(diverges(p.sale_price, mul(size, p.plot_rate)) ? { sale_price: true } : {}),
+      ...(diverges(p.plot_commission, mul(size, p.commission_rate)) ? { plot_commission: true } : {}),
+      ...(diverges(p.to_receive_bank, mul(p.plot_size_mtr, p.circle_rate)) ? { to_receive_bank: true } : {}),
+    });
+
     setPlotForm({
       plot_no: buildPlotNo(block, numberPart), block, buyer_name: p.buyer_name || '',
       plot_size: p.plot_size ? String(p.plot_size) : '',
       plot_size_mtr: p.plot_size_mtr ? String(p.plot_size_mtr) : '',
       plot_rate: (parseFloat(p.original_plot_rate) > 0 ? String(p.original_plot_rate) : '') || (p.plot_rate ? String(p.plot_rate) : ''),
       sale_price: p.sale_price ? String(p.sale_price) : '',
+      // Rates are UI-only and not stored; left blank so the effect's
+      // empty-rate guard keeps the saved prices untouched until one is typed.
+      company_rate: '', party_rate: '',
       company_price: parseFloat(p.company_price) > 0 ? String(p.company_price) : '',
       party_price: parseFloat(p.party_price) > 0 ? String(p.party_price) : '',
       registry_area: p.registry_area ? String(p.registry_area) : '',
@@ -677,7 +754,12 @@ const PlotPayments = () => {
       const origRate = parseFloat(plotForm.plot_rate) || 0;
       const effectivePlotRate = origRate - discountVal;
       const plotSize = parseFloat(plotForm.plot_size) || 0;
-      const discountedSalePrice = discountVal > 0 ? plotSize * effectivePlotRate : parseFloat(plotForm.sale_price) || 0;
+      const discountedSalePrice = resolveSalePrice({
+        manual: isManual('sale_price'),
+        salePriceInput: plotForm.sale_price,
+        plotSize,
+        effectiveRate: effectivePlotRate,
+      });
       const normalizedPlot = {
         ...plotForm,
         block: normalizedBlock,
@@ -2139,17 +2221,17 @@ const PlotPayments = () => {
                     onChange={(e) => setPlotForm((prev) => ({ ...prev, plot_rate: e.target.value }))}
                     required />
                 </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Sale Price (₹) = Size × Rate</Label>
-                  <Input type="number" step="0.01" placeholder="Auto-calculated"
-                    value={plotForm.sale_price}
-                    readOnly
-                    disabled
-                    className="bg-emerald-50 font-semibold" />
-                  {plotForm.plot_size && plotForm.plot_rate && (
-                    <p className="text-[10px] text-emerald-600">Auto: {plotForm.plot_size} × {plotForm.plot_rate} = ₹{plotForm.sale_price}</p>
-                  )}
-                </div>
+                <DerivedMoneyInput
+                  label="Sale Price (₹) = Size × Rate"
+                  tone="emerald"
+                  value={plotForm.sale_price}
+                  manual={isManual('sale_price')}
+                  onChange={handleDerivedChange('sale_price')}
+                  onReset={() => resetDerived('sale_price')}
+                  autoHint={plotForm.plot_size && plotForm.plot_rate
+                    ? `Auto: ${plotForm.plot_size} × ${plotForm.plot_rate} = ₹${plotForm.sale_price}`
+                    : null}
+                />
                 {plotForm.status !== 'COMPANY' && (
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium">{plotForm.status === 'BOOKED' ? 'Booked Date' : 'Status Date'}</Label>
@@ -2237,37 +2319,63 @@ const PlotPayments = () => {
                   <div className="rounded-lg border border-indigo-200 bg-indigo-50/30 p-4 space-y-3">
                     <div className="flex items-center gap-2">
                       <Handshake className="w-3.5 h-3.5 text-indigo-600" />
-                      <p className="text-xs font-semibold text-indigo-800">Company Price vs Party Price (Broker Margin)</p>
+                      <p className="text-xs font-semibold text-indigo-800">Company Price vs Party Price (Broker Margin) = Rate × Size (Gaz)</p>
                       {hasBoth && (
                         <Badge className={`text-[9px] ml-auto border ${margin >= 0 ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-red-100 text-red-700 border-red-200'}`}>
                           Margin ₹{fmt(Math.abs(margin))}{company > 0 ? ` · ${marginPct >= 0 ? '+' : ''}${marginPct.toFixed(1)}%` : ''}
                         </Badge>
                       )}
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                       <div className="space-y-1.5">
-                        <Label className="text-xs font-medium">Company Price (₹)</Label>
-                        <Input type="number" step="0.01" min="0" placeholder="e.g. 2000000"
-                          value={plotForm.company_price}
-                          onChange={(e) => setPlotForm((prev) => ({ ...prev, company_price: e.target.value }))} />
-                        <p className="text-[10px] text-indigo-500">Price the company/owner sets (given to broker)</p>
+                        <Label className="text-xs font-medium">Company Rate (₹ per Gaz)</Label>
+                        <Input type="number" step="0.01" min="0" placeholder="e.g. 54540"
+                          value={plotForm.company_rate}
+                          onChange={(e) => { resetDerived('company_price'); setPlotForm((prev) => ({ ...prev, company_rate: e.target.value })); }} />
+                        <p className="text-[10px] text-indigo-500">Owner&apos;s rate — fills Company Price</p>
                       </div>
+                      <DerivedMoneyInput
+                        label="Company Price (₹)"
+                        tone="indigo"
+                        min="0"
+                        placeholder="e.g. 2000000"
+                        value={plotForm.company_price}
+                        manual={isManual('company_price')}
+                        onChange={handleDerivedChange('company_price')}
+                        onReset={() => resetDerived('company_price')}
+                        autoHint={plotForm.plot_size && plotForm.company_rate
+                          ? `Auto: ${plotForm.plot_size} × ${plotForm.company_rate} = ₹${plotForm.company_price}`
+                          : 'Price the company/owner sets (given to broker)'}
+                      />
                       <div className="space-y-1.5">
-                        <Label className="text-xs font-medium">Party Price (₹)</Label>
-                        <Input type="number" step="0.01" min="0" placeholder="e.g. 2500000"
-                          value={plotForm.party_price}
-                          onChange={(e) => setPlotForm((prev) => ({ ...prev, party_price: e.target.value }))} />
-                        <p className="text-[10px] text-indigo-500">Price broker sells to the client</p>
+                        <Label className="text-xs font-medium">Party Rate (₹ per Gaz)</Label>
+                        <Input type="number" step="0.01" min="0" placeholder="e.g. 68175"
+                          value={plotForm.party_rate}
+                          onChange={(e) => { resetDerived('party_price'); setPlotForm((prev) => ({ ...prev, party_rate: e.target.value })); }} />
+                        <p className="text-[10px] text-indigo-500">Broker&apos;s rate — fills Party Price</p>
                       </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-xs font-medium">Broker Margin (₹)</Label>
-                        <div className={`h-9 flex items-center px-3 rounded-md border font-semibold text-sm ${hasBoth ? (margin >= 0 ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-red-50 border-red-200 text-red-700') : 'bg-slate-50 border-slate-200 text-slate-400'}`}>
-                          {hasBoth ? `₹${fmt(margin)}` : '—'}
-                        </div>
-                        {hasBoth && (
-                          <p className="text-[10px] text-indigo-500">₹{fmt(party)} − ₹{fmt(company)} = ₹{fmt(margin)}</p>
-                        )}
+                      <DerivedMoneyInput
+                        label="Party Price (₹)"
+                        tone="indigo"
+                        min="0"
+                        placeholder="e.g. 2500000"
+                        value={plotForm.party_price}
+                        manual={isManual('party_price')}
+                        onChange={handleDerivedChange('party_price')}
+                        onReset={() => resetDerived('party_price')}
+                        autoHint={plotForm.plot_size && plotForm.party_rate
+                          ? `Auto: ${plotForm.plot_size} × ${plotForm.party_rate} = ₹${plotForm.party_price}`
+                          : 'Price broker sells to the client'}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-medium">Broker Margin (₹) = Party − Company</Label>
+                      <div className={`h-9 flex items-center px-3 rounded-md border font-semibold text-sm ${hasBoth ? (margin >= 0 ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-red-50 border-red-200 text-red-700') : 'bg-slate-50 border-slate-200 text-slate-400'}`}>
+                        {hasBoth ? `₹${fmt(margin)}` : '—'}
                       </div>
+                      {hasBoth && (
+                        <p className="text-[10px] text-indigo-500">₹{fmt(party)} − ₹{fmt(company)} = ₹{fmt(margin)}</p>
+                      )}
                     </div>
                   </div>
                 );
@@ -2287,17 +2395,17 @@ const PlotPayments = () => {
                     onChange={(e) => setPlotForm({ ...plotForm, commission_rate: e.target.value })}
                     required />
                 </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Plot Commission (₹)</Label>
-                  <Input type="number" step="0.01" placeholder="Auto-calculated"
-                    value={plotForm.plot_commission}
-                    readOnly
-                    disabled
-                    className="bg-amber-50 font-semibold" />
-                  {plotForm.plot_size && plotForm.commission_rate && (
-                    <p className="text-[10px] text-amber-600">Auto: {plotForm.plot_size} × {plotForm.commission_rate} = ₹{plotForm.plot_commission}</p>
-                  )}
-                </div>
+                <DerivedMoneyInput
+                  label="Plot Commission (₹)"
+                  tone="amber"
+                  value={plotForm.plot_commission}
+                  manual={isManual('plot_commission')}
+                  onChange={handleDerivedChange('plot_commission')}
+                  onReset={() => resetDerived('plot_commission')}
+                  autoHint={plotForm.plot_size && plotForm.commission_rate
+                    ? `Auto: ${plotForm.plot_size} × ${plotForm.commission_rate} = ₹${plotForm.plot_commission}`
+                    : null}
+                />
                 </div>
               </div>
 
@@ -2315,17 +2423,17 @@ const PlotPayments = () => {
                     onChange={(e) => setPlotForm({ ...plotForm, circle_rate: e.target.value })}
                     required />
                 </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-medium">Bank Amount to Be Received (₹)</Label>
-                  <Input type="number" step="0.01" placeholder="Auto-calculated"
-                    value={plotForm.to_receive_bank}
-                    readOnly
-                    disabled
-                    className="bg-blue-50 font-semibold" />
-                  {plotForm.plot_size_mtr && plotForm.circle_rate && (
-                    <p className="text-[10px] text-blue-600">Auto: {plotForm.circle_rate} × {plotForm.plot_size_mtr} = ₹{plotForm.to_receive_bank}</p>
-                  )}
-                </div>
+                <DerivedMoneyInput
+                  label="Bank Amount to Be Received (₹)"
+                  tone="blue"
+                  value={plotForm.to_receive_bank}
+                  manual={isManual('to_receive_bank')}
+                  onChange={handleDerivedChange('to_receive_bank')}
+                  onReset={() => resetDerived('to_receive_bank')}
+                  autoHint={plotForm.plot_size_mtr && plotForm.circle_rate
+                    ? `Auto: ${plotForm.circle_rate} × ${plotForm.plot_size_mtr} = ₹${plotForm.to_receive_bank}`
+                    : null}
+                />
                 </div>
               </div>
 

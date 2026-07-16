@@ -10,6 +10,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Clients from './pages/Clients';
 import ClientDetail from './pages/ClientDetail';
+import MemberLedger from './pages/MemberLedger';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 import Sites from './pages/Sites';
@@ -90,6 +91,7 @@ function App() {
             <Route path="/dashboard" element={<ProtectedRoute requiredModule="dashboard"><Dashboard /></ProtectedRoute>} />
             <Route path="/clients" element={<ProtectedRoute requiredModule="clients"><Clients /></ProtectedRoute>} />
             <Route path="/clients/:id" element={<ProtectedRoute requiredModule="clients"><ClientDetail /></ProtectedRoute>} />
+            <Route path="/clients/:id/ledger" element={<ProtectedRoute requiredModule="clients"><MemberLedger /></ProtectedRoute>} />
             <Route path="/register-user" element={<ProtectedRoute requiredModule="clients"><RegisterUser /></ProtectedRoute>} />
             <Route path="/vendors" element={<ProtectedRoute requiredModule="vendors"><VendorManagement /></ProtectedRoute>} />
             <Route path="/vendors/inventory" element={<ProtectedRoute requiredModule="vendors"><VendorInventory /></ProtectedRoute>} />

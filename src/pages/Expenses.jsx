@@ -55,10 +55,7 @@ import {
 } from '../components/ui/tooltip';
 import { Tabs, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { PREDEFINED_EXPENSE_CATEGORIES, HIDDEN_EXPENSE_CATEGORIES_KEY } from '../constants/expenseCategories';
-const PAYMENT_MODE_OPTIONS = [
-  'CASH', 'UPI', 'CHEQUE', 'BANK', 'TRANSFER', 'NEFT', 'RTGS', 'IMPS', 'ADJUST',
-];
-
+import { PAYMENT_MODE_OPTIONS, BANK_MODES } from '../constants/paymentOptions';
 
 const MODE_COLORS = {
   'CASH': 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -422,7 +419,7 @@ const Expenses = () => {
   }, [autocomplete.fromEntities, fromSearch]);
 
   const isCashMode = ['CASH'].includes(form.payment_mode);
-  const isBankMode = ['BANK', 'UPI', 'CHEQUE', 'NEFT', 'RTGS', 'IMPS', 'TRANSFER'].includes(form.payment_mode);
+  const isBankMode = BANK_MODES.includes(form.payment_mode);
 
   const voucherInputRef = useRef(null);
 

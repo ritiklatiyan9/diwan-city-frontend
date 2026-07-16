@@ -23,6 +23,7 @@ import {
   Store, HelpCircle, FileText, Upload, GraduationCap, BadgeCheck,
   UserCog, IndianRupee, Contact, FileCheck, Building2,
   Receipt, Landmark, Wallet, TrendingUp, ChevronRight,
+  BookOpen, ExternalLink,
 } from 'lucide-react';
 
 // ── Constants ──
@@ -42,6 +43,14 @@ const BLOOD_OPTIONS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 const STATUS_OPTIONS = ['ACTIVE', 'INACTIVE', 'BLOCKED'];
 const MARITAL_OPTIONS = ['SINGLE', 'MARRIED', 'DIVORCED', 'WIDOWED'];
 const EMPLOYMENT_TYPE_OPTIONS = ['FULL-TIME', 'PART-TIME', 'CONTRACT', 'INTERN', 'PROBATION', 'FREELANCE'];
+
+// Transaction-source accents. Literal class strings — Tailwind's scanner cannot
+// see interpolated names. Keys match the `source` the API emits.
+const TXN_SOURCE_TONE = {
+  'EXPENSE': 'bg-orange-50 text-orange-600 border border-orange-100',
+  'PLOT PAYMENT': 'bg-cyan-50 text-cyan-700 border border-cyan-100',
+  'DAYBOOK': 'bg-blue-50 text-blue-600 border border-blue-100',
+};
 
 const STATUS_COLORS = {
   ACTIVE: 'bg-emerald-100 text-emerald-700',
@@ -402,18 +411,32 @@ const ClientDetail = () => {
   const m = member;
 
   return (
-    <div className="max-w-4xl space-y-5">
+    <div className="max-w-6xl space-y-5">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="sm" onClick={() => navigate('/clients')} className="h-8 w-8 p-0">
-          <ArrowLeft className="w-4 h-4" />
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <Button variant="ghost" size="sm" onClick={() => navigate('/clients')} className="h-8 w-8 p-0">
+            <ArrowLeft className="w-4 h-4" />
+          </Button>
+          <h1 className="text-xl font-semibold text-slate-900">Member Profile</h1>
+        </div>
+        {/* Read action — deliberately outside the canManage guard below, since
+            view-only users are exactly who needs the ledger. */}
+        <Button asChild size="sm" className="shrink-0 gap-1.5 bg-slate-900 text-white hover:bg-slate-800">
+          <a href={`/clients/${id}/ledger`} target="_blank" rel="noopener noreferrer">
+            <BookOpen className="w-4 h-4" /> Ledger
+            <ExternalLink className="w-3 h-3 opacity-60" />
+          </a>
         </Button>
-        <h1 className="text-xl font-semibold text-slate-900">Member Profile</h1>
       </div>
 
       {/* Profile Card */}
-      <Card className="shadow-none border-slate-200 overflow-hidden">
-        <div className="h-24 bg-gradient-to-r from-slate-800 via-slate-700 to-slate-900 relative">
+      <Card className="border-slate-200/80 overflow-hidden shadow-[0_2px_16px_-8px_rgba(30,41,59,0.12)]">
+        <div className="h-24 relative overflow-hidden bg-gradient-to-br from-slate-800 via-indigo-900 to-slate-900">
+          <div className="pointer-events-none absolute inset-0">
+            <div className="absolute -top-16 right-8 h-40 w-40 rounded-full bg-indigo-400/20 blur-3xl" />
+            <div className="absolute -bottom-20 left-24 h-40 w-40 rounded-full bg-sky-300/15 blur-3xl" />
+          </div>
           <div className="absolute -bottom-10 left-6">
             <Avatar src={m.photo} name={m.full_name} size="xl" />
           </div>
@@ -469,7 +492,7 @@ const ClientDetail = () => {
       {/* Detail Sections */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         {/* Personal */}
-        <Card className="shadow-none border-slate-200">
+        <Card className="border-slate-200/80 shadow-[0_2px_16px_-8px_rgba(30,41,59,0.12)]">
           <CardContent className="p-5">
             <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
               <User className="w-3.5 h-3.5" /> Personal
@@ -496,7 +519,7 @@ const ClientDetail = () => {
         </Card>
 
         {/* Contact & Address */}
-        <Card className="shadow-none border-slate-200">
+        <Card className="border-slate-200/80 shadow-[0_2px_16px_-8px_rgba(30,41,59,0.12)]">
           <CardContent className="p-5">
             <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
               <Phone className="w-3.5 h-3.5" /> Contact & Address
@@ -535,7 +558,7 @@ const ClientDetail = () => {
         </Card>
 
         {/* Identity */}
-        <Card className="shadow-none border-slate-200">
+        <Card className="border-slate-200/80 shadow-[0_2px_16px_-8px_rgba(30,41,59,0.12)]">
           <CardContent className="p-5">
             <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
               <Shield className="w-3.5 h-3.5" /> Identity Documents
@@ -556,7 +579,7 @@ const ClientDetail = () => {
         </Card>
 
         {/* Bank */}
-        <Card className="shadow-none border-slate-200">
+        <Card className="border-slate-200/80 shadow-[0_2px_16px_-8px_rgba(30,41,59,0.12)]">
           <CardContent className="p-5">
             <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
               <CreditCard className="w-3.5 h-3.5" /> Bank Details
@@ -576,7 +599,7 @@ const ClientDetail = () => {
 
       {/* Employee Details */}
       {m.member_type === 'EMPLOYEE' && (m.employee_id || m.designation || m.department || m.date_of_joining || m.salary) && (
-        <Card className="shadow-none border-slate-200">
+        <Card className="border-slate-200/80 shadow-[0_2px_16px_-8px_rgba(30,41,59,0.12)]">
           <CardContent className="p-5">
             <p className="text-[11px] font-semibold text-indigo-600 uppercase tracking-wider mb-3 flex items-center gap-1.5">
               <UserCog className="w-3.5 h-3.5" /> Employee Details
@@ -628,7 +651,7 @@ const ClientDetail = () => {
         const kycDocs = KYC_DOC_FIELDS.filter(d => m[d.key]);
         if (kycDocs.length === 0) return null;
         return (
-          <Card className="shadow-none border-slate-200">
+          <Card className="border-slate-200/80 shadow-[0_2px_16px_-8px_rgba(30,41,59,0.12)]">
             <CardContent className="p-5">
               <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
                 <FileCheck className="w-3.5 h-3.5" /> KYC Documents
@@ -658,7 +681,7 @@ const ClientDetail = () => {
         const empDocs = EMPLOYEE_DOC_FIELDS.filter(d => m[d.key]);
         if (empDocs.length === 0) return null;
         return (
-          <Card className="shadow-none border-slate-200">
+          <Card className="border-slate-200/80 shadow-[0_2px_16px_-8px_rgba(30,41,59,0.12)]">
             <CardContent className="p-5">
               <p className="text-[11px] font-semibold text-indigo-600 uppercase tracking-wider mb-3 flex items-center gap-1.5">
                 <GraduationCap className="w-3.5 h-3.5" /> Employee Documents
@@ -685,7 +708,7 @@ const ClientDetail = () => {
 
       {/* Notes & Meta */}
       {(m.reference || m.notes || m.created_at) && (
-        <Card className="shadow-none border-slate-200">
+        <Card className="border-slate-200/80 shadow-[0_2px_16px_-8px_rgba(30,41,59,0.12)]">
           <CardContent className="p-5">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {m.reference && (
@@ -712,7 +735,7 @@ const ClientDetail = () => {
       )}
 
       {/* Financial Info */}
-      <Card className="shadow-none border-slate-200 overflow-hidden">
+      <Card className="border-slate-200/80 shadow-[0_2px_16px_-8px_rgba(30,41,59,0.12)] overflow-hidden">
         <CardContent className="p-0">
           {/* Header */}
           <div className="px-5 pt-5 pb-3">
@@ -975,7 +998,7 @@ const ClientDetail = () => {
       </Card>
 
       {/* Transactions */}
-      <Card className="shadow-none border-slate-200">
+      <Card className="border-slate-200/80 shadow-[0_2px_16px_-8px_rgba(30,41,59,0.12)]">
         <CardContent className="p-5">
           <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
             <IndianRupee className="w-3.5 h-3.5" /> All Transactions
@@ -1033,12 +1056,14 @@ const ClientDetail = () => {
                       <TableRow key={`${t.source}-${t.id}`} className="hover:bg-slate-50/50">
                         <TableCell className="text-[11px] text-slate-600 tabular-nums py-2">{fmtDate(t.date)}</TableCell>
                         <TableCell className="py-2">
-                          <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold uppercase ${
-                            t.source === 'EXPENSE' ? 'bg-orange-50 text-orange-600 border border-orange-100' :
-                            'bg-blue-50 text-blue-600 border border-blue-100'
-                          }`}>
+                          <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold uppercase whitespace-nowrap ${TXN_SOURCE_TONE[t.source] || TXN_SOURCE_TONE.DAYBOOK}`}>
                             {t.entry_type || t.source}
                           </span>
+                          {/* Plot payments reach this member by name (booked_by /
+                              buyer_name / received_by), so name the plot too. */}
+                          {t.source === 'PLOT PAYMENT' && t.plot_no && (
+                            <span className="ml-1 text-[9px] font-medium text-slate-400">{t.plot_no}</span>
+                          )}
                         </TableCell>
                         <TableCell className="text-[11px] text-slate-700 py-2 max-w-[160px] truncate">
                           {t.from_entity && t.to_entity ? `${t.from_entity} → ${t.to_entity}` :

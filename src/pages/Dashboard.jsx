@@ -26,12 +26,14 @@ import {
   Loader2, Clock, CheckCircle2, XCircle, ExternalLink,
   Send, Search, Phone, TrendingUp, TrendingDown, AlertTriangle,
   MessageSquare, Paperclip, ArrowLeft, X, ShieldCheck, RefreshCw,
+  Plus,
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import TimeFilter, { useTimeRange } from '../components/dashboard/TimeFilter';
 import KpiCard from '../components/dashboard/KpiCard';
 import VerifyPanel from '../components/dashboard/VerifyPanel';
 import { RevenueVsExpenseChart, ProfitTrendChart, ExpenseByCategoryRadar } from '../components/dashboard/AnalyticsCharts';
+import CreditDebitModal from '../components/dashboard/CreditDebitModal';
 
 /* Reusable decorative SVG curves for cards */
 const CardCurves = ({ color = 'rgba(99,102,241,0.07)', color2 = null }) => (
@@ -210,6 +212,12 @@ export const Dashboard = () => {
   const canReadCashflow = hasPermission('cashflow', 'read');
   const canReadClients = hasPermission('clients', 'read');
   const canReadChat = hasPermission('chat', 'read');
+
+  // ── Credit / Debit quick entry ──
+  // Same 'write' action the backend's requirePermission() checks on
+  // POST /plots/payments and POST /expenses.
+  const [quickEntryOpen, setQuickEntryOpen] = useState(false);
+  const canQuickEntry = hasPermission('plot_payments', 'write') || hasPermission('expenses', 'write');
 
   // ── Dashboard component visibility permissions ──
   // Admins always see everything. Sub-admins are checked against the DB.
@@ -849,6 +857,7 @@ export const Dashboard = () => {
             </p>
           
           </div>
+        <div className="flex w-full shrink-0 flex-col gap-2.5 sm:flex-row sm:items-center lg:w-auto">
         {currentSite && canSee('member_search') && (
           <div className="relative w-full sm:w-80 lg:w-96 group shrink-0">
             <div className="relative flex items-center">
@@ -940,8 +949,20 @@ export const Dashboard = () => {
             )}
           </div>
         )}
+        {currentSite && canQuickEntry && (
+          <Button
+            onClick={() => setQuickEntryOpen(true)}
+            className="h-10 shrink-0 gap-1.5 rounded-lg bg-slate-900 px-4 text-[13px] font-semibold text-white shadow-sm transition-colors hover:bg-slate-800"
+          >
+            <Plus className="h-4 w-4" />
+            Credit / Debit
+          </Button>
+        )}
+        </div>
           </div>
         </motion.div>
+
+      <CreditDebitModal open={quickEntryOpen} onOpenChange={setQuickEntryOpen} />
 
       {/* ═══ Main Dashboard ═══ */}
       <div className="space-y-6">
