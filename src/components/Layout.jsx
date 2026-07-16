@@ -36,6 +36,7 @@ import {
   // Upgraded icons
   Sprout, HandCoins, Briefcase, Library, UsersRound, ShoppingBag, NotebookPen,
   Sparkles, SearchX,
+  Map as MapIcon,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Separator } from './ui/separator';
@@ -365,6 +366,7 @@ const Layout = () => {
   // Plot Payments child items
   const plotPayChildren = [
     { path: '/plot-payments', label: 'Plot Payments', icon: LayoutGrid },
+    { path: '/colony-map', label: 'Colony Map', icon: MapIcon },
     { path: '/plot-payments?action=create-plot', label: 'Create Plot', icon: Plus },
     { path: '/payment-management', label: 'Payment Tracker', icon: CalendarClock },
     { path: '/payment-analytics', label: 'Payment Analytics', icon: BarChart3 },

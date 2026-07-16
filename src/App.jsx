@@ -29,6 +29,7 @@ import PlotPayments from './pages/PlotPayments';
 import PaymentManagement from './pages/PaymentManagement';
 import PaymentAnalytics from './pages/PaymentAnalytics';
 import PlotDetail from './pages/PlotDetail';
+import ColonyMap from './pages/ColonyMap';
 import PlotRegistry from './pages/PlotRegistry';
 import Expenses from './pages/Expenses';
 import EditApprovals from './pages/EditApprovals';
@@ -116,6 +117,7 @@ function App() {
             <Route path="/plot-payments/:id" element={<ProtectedRoute requiredModule="plot_payments"><PlotDetail /></ProtectedRoute>} />
             <Route path="/payment-management" element={<ProtectedRoute requiredModule="plot_payments"><PaymentManagement /></ProtectedRoute>} />
             <Route path="/payment-analytics" element={<ProtectedRoute requiredModule="plot_payments"><PaymentAnalytics /></ProtectedRoute>} />
+            <Route path="/colony-map" element={<ProtectedRoute requiredModule="plot_payments"><ColonyMap /></ProtectedRoute>} />
             <Route path="/plot-registry" element={<ProtectedRoute requiredModule="plot_registry"><PlotRegistry /></ProtectedRoute>} />
             <Route path="/plot-registry/:id" element={<ProtectedRoute requiredModule="plot_registry"><PlotRegistry /></ProtectedRoute>} />
             <Route path="/expenses" element={<ProtectedRoute requiredModule="expenses"><Expenses /></ProtectedRoute>} />
