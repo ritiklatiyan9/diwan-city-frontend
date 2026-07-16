@@ -67,6 +67,53 @@ const getFileBadgeColor = (fileType) => {
     }
 };
 
+// Spreadsheet preview: renders sheets (array of {name, rows:AoA}) as a scrollable
+// table with a sheet-tab strip. Row cap keeps a huge sheet from janking the modal.
+const VIEW_MAX_ROWS = 1000;
+function ExcelViewerTables({ sheets, activeSheet, setActiveSheet }) {
+    if (!sheets?.length) {
+        return <div className="flex-1 flex items-center justify-center text-sm text-slate-400">Empty file</div>;
+    }
+    const idx = Math.min(activeSheet, sheets.length - 1);
+    const allRows = sheets[idx]?.rows || [];
+    const rows = allRows.slice(0, VIEW_MAX_ROWS);
+    const colCount = rows.reduce((m, r) => Math.max(m, r.length), 0);
+    return (
+        <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="flex-1 overflow-auto">
+                <table className="border-collapse text-xs">
+                    <tbody>
+                        {rows.map((row, ri) => (
+                            <tr key={ri}>
+                                <td className="sticky left-0 bg-slate-100 text-slate-400 text-[10px] font-medium px-2 py-1 border border-slate-200 text-right select-none z-10">{ri + 1}</td>
+                                {Array.from({ length: colCount }).map((_, ci) => (
+                                    <td key={ci} className={`px-2 py-1 border border-slate-200 whitespace-nowrap ${ri === 0 ? 'font-semibold bg-slate-50' : 'bg-white'}`}>
+                                        {row[ci] != null ? String(row[ci]) : ''}
+                                    </td>
+                                ))}
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+            <div className="flex items-center gap-1 border-t border-slate-200 bg-slate-50 px-2 py-1 overflow-x-auto shrink-0">
+                {allRows.length > VIEW_MAX_ROWS && (
+                    <span className="text-[10px] text-amber-600 mr-2 shrink-0">First {VIEW_MAX_ROWS} rows</span>
+                )}
+                {sheets.map((s, i) => (
+                    <button
+                        key={i}
+                        onClick={() => setActiveSheet(i)}
+                        className={`text-xs px-2.5 py-1 rounded shrink-0 ${i === idx ? 'bg-emerald-600 text-white' : 'text-slate-600 hover:bg-slate-200'}`}
+                    >
+                        {s.name}
+                    </button>
+                ))}
+            </div>
+        </div>
+    );
+}
+
 export default function ExcelFiles() {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
@@ -87,6 +134,7 @@ export default function ExcelFiles() {
     const [renameDialog, setRenameDialog] = useState({ open: false, file: null, name: '' });
     const [renameFolderDialog, setRenameFolderDialog] = useState({ open: false, folder: null, name: '' });
     const [createFolderDialog, setCreateFolderDialog] = useState({ open: false, name: '' });
+    const [viewer, setViewer] = useState({ open: false, file: null, loading: false, kind: null, sheets: [], activeSheet: 0, pdfUrl: null, downloadUrl: null, editable: false, error: null });
     const fileInputRef = useRef(null);
 
     useEffect(() => {
@@ -216,6 +264,42 @@ export default function ExcelFiles() {
         } catch (error) {
             console.error('Export error:', error);
             toast.error('Export failed', { id: 'csv-export' });
+        }
+    };
+
+    // Open a file in the in-app viewer modal instead of downloading it.
+    const handleView = async (file) => {
+        setViewer({ open: true, file, loading: true, kind: null, sheets: [], activeSheet: 0, pdfUrl: null, downloadUrl: null, editable: false, error: null });
+        try {
+            const { data } = await api.get(`/excel/${file.id}`);
+            const ft = data.file?.file_type || file.file_type || 'excel';
+
+            // Native spreadsheet (created in-app) — render its stored sheet data.
+            if (Array.isArray(data.file?.sheet_data) && data.file.sheet_data.length) {
+                const sheets = data.file.sheet_data.map((s, i) => ({ name: s.name || `Sheet ${i + 1}`, rows: s.data || [] }));
+                setViewer((v) => ({ ...v, loading: false, kind: 'excel', sheets, editable: true, downloadUrl: data.downloadUrl || null }));
+                return;
+            }
+
+            const url = data.downloadUrl;
+            if (!url) { setViewer((v) => ({ ...v, loading: false, error: 'No preview available for this file.' })); return; }
+            if (ft === 'pdf') { setViewer((v) => ({ ...v, loading: false, kind: 'pdf', pdfUrl: url, downloadUrl: url })); return; }
+            if (ft === 'doc') { setViewer((v) => ({ ...v, loading: false, kind: 'doc', downloadUrl: url })); return; }
+
+            // Uploaded spreadsheet (xlsx/xls/csv) — fetch bytes and parse to a table.
+            try {
+                const res = await fetch(url);
+                const ab = await res.arrayBuffer();
+                const XLSX = await import('xlsx');
+                const wb = XLSX.read(ab, { type: 'array' });
+                const sheets = wb.SheetNames.map((name) => ({ name, rows: XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '' }) }));
+                setViewer((v) => ({ ...v, loading: false, kind: 'excel', sheets, downloadUrl: url }));
+            } catch {
+                // ponytail: cross-origin fetch of the signed URL may be blocked; fall back to download.
+                setViewer((v) => ({ ...v, loading: false, kind: 'doc', downloadUrl: url, error: 'Preview unavailable — download to view.' }));
+            }
+        } catch {
+            setViewer((v) => ({ ...v, loading: false, error: 'Failed to open file.' }));
         }
     };
 
@@ -504,7 +588,7 @@ export default function ExcelFiles() {
                                     <div
                                         key={file.id}
                                         className="group bg-white rounded-lg border border-slate-200 hover:border-emerald-300 hover:shadow-sm transition-all cursor-pointer overflow-hidden flex flex-col items-center p-2 text-center"
-                                        onClick={() => handleExport(file)}
+                                        onClick={() => handleView(file)}
                                     >
                                         <div className={`w-full aspect-square bg-gradient-to-br ${getFileGradient(file.file_type)} flex items-center justify-center rounded-sm border border-slate-50 relative mb-1`}>
                                             <div className="scale-50 flex items-center justify-center">
@@ -680,6 +764,67 @@ export default function ExcelFiles() {
                             Rename
                         </Button>
                     </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* File Viewer Dialog — opens files in-app instead of downloading */}
+            <Dialog open={viewer.open} onOpenChange={(open) => { if (!open) setViewer((v) => ({ ...v, open: false })); }}>
+                <DialogContent className="max-w-6xl w-[95vw] h-[90vh] flex flex-col p-0 gap-0">
+                    <DialogHeader className="px-4 py-3 border-b border-slate-200 flex-row items-center justify-between space-y-0">
+                        <div className="min-w-0 pr-4">
+                            <DialogTitle className="text-sm truncate">{viewer.file?.name || 'File'}</DialogTitle>
+                            <DialogDescription className="text-xs text-slate-400">
+                                {(viewer.file?.file_type || 'excel').toUpperCase()} preview
+                            </DialogDescription>
+                        </div>
+                        <div className="flex items-center gap-2 pr-6 shrink-0">
+                            {viewer.editable && viewer.file && (
+                                <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => navigate(`/excel/edit/${viewer.file.id}`)}>
+                                    <Pencil className="w-3 h-3 mr-1" /> Edit
+                                </Button>
+                            )}
+                            {viewer.file && (
+                                <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => handleExport(viewer.file)}>
+                                    <Download className="w-3 h-3 mr-1" /> Download
+                                </Button>
+                            )}
+                        </div>
+                    </DialogHeader>
+                    <div className="flex-1 overflow-hidden flex flex-col bg-slate-50">
+                        {viewer.loading ? (
+                            <div className="flex-1 flex items-center justify-center">
+                                <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
+                            </div>
+                        ) : viewer.error ? (
+                            <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center px-6">
+                                <FileX2 className="w-10 h-10 text-slate-300" />
+                                <p className="text-sm text-slate-500">{viewer.error}</p>
+                                {viewer.downloadUrl && (
+                                    <Button size="sm" onClick={() => handleExport(viewer.file)} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                                        <Download className="w-3.5 h-3.5 mr-1.5" /> Download
+                                    </Button>
+                                )}
+                            </div>
+                        ) : viewer.kind === 'pdf' ? (
+                            <iframe title={viewer.file?.name} src={viewer.pdfUrl} className="flex-1 w-full border-0" />
+                        ) : viewer.kind === 'doc' ? (
+                            <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center px-6">
+                                <FileText className="w-10 h-10 text-blue-300" />
+                                <p className="text-sm text-slate-500">Preview isn't available for Word documents.</p>
+                                <Button size="sm" onClick={() => handleExport(viewer.file)} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                                    <Download className="w-3.5 h-3.5 mr-1.5" /> Download to view
+                                </Button>
+                            </div>
+                        ) : viewer.kind === 'excel' ? (
+                            <ExcelViewerTables
+                                sheets={viewer.sheets}
+                                activeSheet={viewer.activeSheet}
+                                setActiveSheet={(i) => setViewer((v) => ({ ...v, activeSheet: i }))}
+                            />
+                        ) : (
+                            <div className="flex-1 flex items-center justify-center text-sm text-slate-400">Nothing to preview</div>
+                        )}
+                    </div>
                 </DialogContent>
             </Dialog>
         </div>

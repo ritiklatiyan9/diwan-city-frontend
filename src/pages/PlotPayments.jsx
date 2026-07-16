@@ -151,6 +151,26 @@ const fmt = (val) => {
   const num = parseFloat(val) || 0;
   return num.toLocaleString('en-IN', { maximumFractionDigits: 2 });
 };
+// Full sum over an explicit plot list — used for the row-selection footer so
+// selecting checkboxes recomputes every column (area, rate, sale, received…),
+// not just the plot count. Same shape as the `totals` memo below.
+const sumPlotTotals = (plots) => {
+  let totSize = 0, totRate = 0, totSalePrice = 0, totToRecBank = 0, totToRecCash = 0, totRecBank = 0, totRecCash = 0, totReceived = 0, totPlotComm = 0;
+  for (const p of plots) {
+    const sp = parseFloat(p.sale_price) || 0;
+    const trb = parseFloat(p.to_receive_bank) || 0;
+    totSize += parseFloat(p.plot_size) || 0;
+    totRate += parseFloat(p.plot_rate) || 0;
+    totSalePrice += sp;
+    totToRecBank += trb;
+    totToRecCash += sp - trb;
+    totRecBank += parseFloat(p.received_bank) || 0;
+    totRecCash += parseFloat(p.received_cash) || 0;
+    totReceived += parseFloat(p.total_received) || 0;
+    totPlotComm += parseFloat(p.plot_commission) || 0;
+  }
+  return { totSize, totRate, totSalePrice, totToRecBank, totToRecCash, totRecBank, totRecCash, totReceived, totPlotComm, totBalBank: totToRecBank - totRecBank, totBalCash: totToRecCash - totRecCash, totNetBal: totSalePrice - totReceived, avgPct: totSalePrice > 0 ? (totReceived / totSalePrice) * 100 : 0, activeCount: plots.length };
+};
 const fmtDate = (d) => {
   if (!d) return '—';
   // If already a YYYY-MM-DD (or ISO) string, format the date portion directly
@@ -1196,7 +1216,13 @@ const PlotPayments = () => {
     return { totSize, totRate, totSalePrice, totToRecBank, totToRecCash, totRecBank, totRecCash, totReceived, totPlotComm, totBalBank: totToRecBank - totRecBank, totBalCash: totToRecCash - totRecCash, totNetBal: totSalePrice - totReceived, avgPct: totSalePrice > 0 ? (totReceived / totSalePrice) * 100 : 0, activeCount: allCount };
   }, [filteredPlots]);
 
-  const displayTotals = includeOldInTotals ? totalsAll : totals;
+  // When rows are checkbox-selected, the footer sums ONLY those rows (all columns).
+  const selectedTotals = useMemo(() => {
+    if (selectedPlotIds.size === 0) return null;
+    return sumPlotTotals(filteredPlots.filter((p) => selectedPlotIds.has(p.id)));
+  }, [filteredPlots, selectedPlotIds]);
+
+  const displayTotals = selectedTotals || (includeOldInTotals ? totalsAll : totals);
   const oldCount = filteredPlots.filter(isOldPlot).length;
 
   // ── Scroll container ref ──
@@ -3751,9 +3777,9 @@ const PlotPayments = () => {
                         <td colSpan={4} className="px-3 py-2">
                           <div className="flex flex-col gap-0.5">
                             <span className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
-                              Total ({displayTotals.activeCount} plots)
+                              {selectedTotals ? 'Selected' : 'Total'} ({displayTotals.activeCount} plots)
                             </span>
-                            {oldCount > 0 && (
+                            {!selectedTotals && oldCount > 0 && (
                               <label className="flex items-center gap-1.5 cursor-pointer select-none">
                                 <input
                                   type="checkbox"
