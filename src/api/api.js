@@ -2,7 +2,7 @@ import axios from 'axios';
 import { toast } from 'sonner';
 import eventBus from '../utils/eventBus';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://diwan-city-backend.onrender.com';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
