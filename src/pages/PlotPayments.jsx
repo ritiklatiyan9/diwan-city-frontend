@@ -361,14 +361,16 @@ const PlotPayments = () => {
   const [buyerSearch, setBuyerSearch] = useState('');
   const [bookingBySearch, setBookingBySearch] = useState('');
 
-  // Searchable dropdown state for Payment modal Buyer Name / Booked By
+  // Searchable dropdown state for Payment modal Buyer Name
   const [payBuyerOpen, setPayBuyerOpen] = useState(false);
-  const [payBookedByOpen, setPayBookedByOpen] = useState(false);
   const [payBuyerSearch, setPayBuyerSearch] = useState('');
-  const [payBookedBySearch, setPayBookedBySearch] = useState('');
 
-  const filteredBookedByMembers = useMemo(() => {
-    const q = (payBookedBySearch || '').trim().toLowerCase();
+  // Searchable client dropdown for Payment modal Cash Details (same source as /clients)
+  const [payCashDetailsOpen, setPayCashDetailsOpen] = useState(false);
+  const [payCashDetailsSearch, setPayCashDetailsSearch] = useState('');
+
+  const filteredCashClients = useMemo(() => {
+    const q = (payCashDetailsSearch || '').trim().toLowerCase();
     const members = autocomplete?.members || [];
     if (!q) return members;
     const filtered = members.filter(m =>
@@ -379,7 +381,7 @@ const PlotPayments = () => {
       const bStart = b.name?.toLowerCase().startsWith(q) ? 0 : 1;
       return aStart - bStart;
     });
-  }, [payBookedBySearch, autocomplete?.members]);
+  }, [payCashDetailsSearch, autocomplete?.members]);
 
   // Searchable dropdown state for Book Plot modal
   const [bookBuyerOpen, setBookBuyerOpen] = useState(false);
@@ -1037,7 +1039,7 @@ const PlotPayments = () => {
     setMessage({ type: '', text: '' });
     clearProofPhoto();
     setPayBuyerSearch('');
-    setPayBookedBySearch('');
+    setPayCashDetailsSearch('');
   };
 
   const handleOpenCreatePayment = () => { resetPayForm(); setPaymentDialogOpen(true); };
@@ -3480,66 +3482,71 @@ const PlotPayments = () => {
                     )}
                   </div>
                 )}
+
+                {/* Cash Details — searchable client dropdown (same source as /clients) */}
+                {(payForm.payment_from === 'CASH' || payForm.payment_type === 'CASH') && (
+                  <div className="space-y-1 relative">
+                    <Label className="text-xs font-medium text-slate-600">Cash Details</Label>
+                    {!payCashDetailsOpen ? (
+                      <button type="button" onClick={() => setPayCashDetailsOpen(true)}
+                        className="flex items-center justify-between w-full h-9 px-3 text-sm bg-white border border-slate-200 rounded-md hover:border-slate-300 transition-colors">
+                        {payForm.bank_details
+                          ? <span className="flex items-center gap-1.5 text-slate-800 truncate"><User className="h-3.5 w-3.5 text-slate-400 shrink-0" />{payForm.bank_details}</span>
+                          : <span className="flex items-center gap-1.5 text-slate-400"><User className="h-3.5 w-3.5" />Select client...</span>}
+                        <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 opacity-40" />
+                      </button>
+                    ) : (
+                      <div className="border border-blue-300 rounded-lg bg-white shadow-sm overflow-hidden ring-2 ring-blue-100">
+                        <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-100 bg-slate-50/60">
+                          <Search className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                          <input
+                            autoFocus
+                            type="text"
+                            placeholder="Search name or phone..."
+                            value={payCashDetailsSearch}
+                            onChange={(e) => setPayCashDetailsSearch(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Escape') { setPayCashDetailsOpen(false); setPayCashDetailsSearch(''); } }}
+                            className="w-full text-xs bg-transparent outline-none placeholder:text-slate-400"
+                          />
+                          {payForm.bank_details && (
+                            <button type="button" onClick={() => { setPayForm({ ...payForm, bank_details: '' }); setPayCashDetailsSearch(''); }}
+                              className="text-slate-400 hover:text-red-500 shrink-0"><X className="h-3.5 w-3.5" /></button>
+                          )}
+                          <button type="button" onClick={() => { setPayCashDetailsOpen(false); setPayCashDetailsSearch(''); }}
+                            className="text-[10px] text-slate-400 hover:text-slate-600 shrink-0 font-medium">ESC</button>
+                        </div>
+                        <div className="max-h-[180px] overflow-y-auto overscroll-contain">
+                          {filteredCashClients.length === 0 ? (
+                            <p className="text-xs text-slate-400 text-center py-4">No client found</p>
+                          ) : (
+                            filteredCashClients.map((m) => {
+                              const label = m.phone ? `${m.name} - ${m.phone}` : m.name;
+                              return (
+                                <button key={`${m.name}-${m.phone || ''}`} type="button"
+                                  onClick={() => { setPayForm({ ...payForm, bank_details: label }); setPayCashDetailsOpen(false); setPayCashDetailsSearch(''); }}
+                                  className={`flex items-center gap-2 w-full px-3 py-2 text-left transition-colors hover:bg-blue-50 ${payForm.bank_details === label ? 'bg-blue-50 border-l-2 border-blue-500' : 'border-l-2 border-transparent'}`}>
+                                  <div className={`flex items-center justify-center h-6 w-6 rounded-full shrink-0 text-[10px] font-semibold ${payForm.bank_details === label ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'}`}>
+                                    {m.name?.charAt(0)?.toUpperCase()}
+                                  </div>
+                                  <div className="flex flex-col min-w-0">
+                                    <span className="text-sm text-slate-800 truncate">{m.name}</span>
+                                    {m.phone && <span className="text-[10px] text-slate-400">{m.phone}</span>}
+                                  </div>
+                                  {payForm.bank_details === label && <Check className="ml-auto h-3.5 w-3.5 text-blue-600 shrink-0" />}
+                                </button>
+                              );
+                            })
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* ── Section 3: Details ── */}
               <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3 space-y-2.5">
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Details</p>
-
-                {/* Booked By */}
-                <div className="space-y-1 relative">
-                  <Label className="text-xs font-medium text-slate-600">Payment Booked By</Label>
-                  {!payBookedByOpen ? (
-                    <button type="button" onClick={() => setPayBookedByOpen(true)}
-                      className="flex items-center justify-between w-full h-9 px-3 text-sm bg-white border border-slate-200 rounded-md hover:border-slate-300 transition-colors">
-                      {payForm.booked_by
-                        ? <span className="flex items-center gap-1.5 text-slate-800"><User className="h-3.5 w-3.5 text-slate-400" />{payForm.booked_by}</span>
-                        : <span className="flex items-center gap-1.5 text-slate-400"><User className="h-3.5 w-3.5" />Select person...</span>}
-                      <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 opacity-40" />
-                    </button>
-                  ) : (
-                    <div className="border border-blue-300 rounded-lg bg-white shadow-sm overflow-hidden ring-2 ring-blue-100">
-                      <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-100 bg-slate-50/60">
-                        <Search className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                        <input
-                          autoFocus
-                          type="text"
-                          placeholder="Search name or phone..."
-                          value={payBookedBySearch}
-                          onChange={(e) => setPayBookedBySearch(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === 'Escape') { setPayBookedByOpen(false); setPayBookedBySearch(''); } }}
-                          className="w-full text-xs bg-transparent outline-none placeholder:text-slate-400"
-                        />
-                        {payForm.booked_by && (
-                          <button type="button" onClick={() => { setPayForm({ ...payForm, booked_by: '' }); setPayBookedBySearch(''); }}
-                            className="text-slate-400 hover:text-red-500 shrink-0"><X className="h-3.5 w-3.5" /></button>
-                        )}
-                        <button type="button" onClick={() => { setPayBookedByOpen(false); setPayBookedBySearch(''); }}
-                          className="text-[10px] text-slate-400 hover:text-slate-600 shrink-0 font-medium">ESC</button>
-                      </div>
-                      <div className="max-h-[180px] overflow-y-auto overscroll-contain">
-                        {filteredBookedByMembers.length === 0 ? (
-                          <p className="text-xs text-slate-400 text-center py-4">No member found</p>
-                        ) : (
-                          filteredBookedByMembers.map((m) => (
-                            <button key={m.name} type="button"
-                              onClick={() => { setPayForm({ ...payForm, booked_by: m.name }); setPayBookedByOpen(false); setPayBookedBySearch(''); }}
-                              className={`flex items-center gap-2 w-full px-3 py-2 text-left transition-colors hover:bg-blue-50 ${payForm.booked_by === m.name ? 'bg-blue-50 border-l-2 border-blue-500' : 'border-l-2 border-transparent'}`}>
-                              <div className={`flex items-center justify-center h-6 w-6 rounded-full shrink-0 text-[10px] font-semibold ${payForm.booked_by === m.name ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'}`}>
-                                {m.name?.charAt(0)?.toUpperCase()}
-                              </div>
-                              <div className="flex flex-col min-w-0">
-                                <span className="text-sm text-slate-800 truncate">{m.name}</span>
-                                {m.phone && <span className="text-[10px] text-slate-400">{m.phone}</span>}
-                              </div>
-                              {payForm.booked_by === m.name && <Check className="ml-auto h-3.5 w-3.5 text-blue-600 shrink-0" />}
-                            </button>
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
 
                 {/* Narration */}
                 <div className="space-y-1">
