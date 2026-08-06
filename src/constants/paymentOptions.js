@@ -27,5 +27,18 @@ export const PAYMENT_MODE_OPTIONS = [
     'CASH', 'UPI', 'CHEQUE', 'BANK', 'TRANSFER', 'NEFT', 'RTGS', 'IMPS', 'ADJUST',
 ];
 
-/** Modes that carry bank account details (drives the Account No / Branch fields). */
+/**
+ * Modes that carry bank account details (drives the Account No / Branch fields).
+ * Holds the same 7 strings as BANK_TYPE_FROMS. New code should call
+ * derivePaymentType() instead — it is the single predicate the payment modal uses.
+ */
 export const BANK_MODES = ['BANK', 'UPI', 'CHEQUE', 'NEFT', 'RTGS', 'IMPS', 'TRANSFER'];
+
+/**
+ * Modes offered for a plot credit. Direction is a toggle in the payment modal,
+ * so RETURN/REFUND must not be selectable here — they would post a POSITIVE
+ * receipt and overstate the plot's collections.
+ */
+export const PLOT_PAYMENT_MODES = PAYMENT_FROM_OPTIONS.filter(
+    (o) => o !== 'RETURN' && o !== 'REFUND',
+);
