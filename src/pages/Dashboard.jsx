@@ -33,7 +33,7 @@ import TimeFilter, { useTimeRange } from '../components/dashboard/TimeFilter';
 import KpiCard from '../components/dashboard/KpiCard';
 import VerifyPanel from '../components/dashboard/VerifyPanel';
 import { RevenueVsExpenseChart, ProfitTrendChart, ExpenseByCategoryRadar } from '../components/dashboard/AnalyticsCharts';
-import CreditDebitModal from '../components/dashboard/CreditDebitModal';
+import PaymentModal from '../components/payments/PaymentModal';
 
 /* Reusable decorative SVG curves for cards */
 const CardCurves = ({ color = 'rgba(99,102,241,0.07)', color2 = null }) => (
@@ -962,7 +962,8 @@ export const Dashboard = () => {
           </div>
         </motion.div>
 
-      <CreditDebitModal open={quickEntryOpen} onOpenChange={setQuickEntryOpen} />
+      {/* module={null} => the modal opens on its "which module?" picker step. */}
+      <PaymentModal open={quickEntryOpen} onOpenChange={setQuickEntryOpen} module={null} />
 
       {/* ═══ Main Dashboard ═══ */}
       <div className="space-y-6">
