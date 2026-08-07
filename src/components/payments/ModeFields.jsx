@@ -32,6 +32,26 @@ const DEFAULT_LABEL = {
 
 const UPPERCASE = new Set(['bank_account', 'branch', 'ifsc', 'txn_ref', 'bank_name']);
 
+// Each canonical field lands in a different column per module, and Postgres
+// rejects an over-long value with a 500 rather than a validation error. These are
+// the NARROWEST column across all 8 modules, so no adapter can overflow:
+//   cash_account/txn_ref -> firm_transactions.transaction_no varchar(50)
+//   bank_account -> expenses.account_no varchar(100)
+//   bank_name -> plot_commission_payments.bank_name varchar(100)
+//   branch -> plot_payments.branch varchar(150) ... capped at 100 for headroom
+//   cheque_no -> varchar(50) in every table that has one
+// ponytail: one shared cap, not a per-adapter table. Real values are ~25 chars;
+// raise it per-adapter only if someone actually hits a limit.
+const MAX_LEN = {
+  cash_account: 50,
+  txn_ref: 50,
+  cheque_no: 50,
+  bank_name: 100,
+  bank_account: 100,
+  branch: 100,
+  ifsc: 11,
+};
+
 export function ModeFields({
   mode,
   kindOverrides,
@@ -77,6 +97,7 @@ export function ModeFields({
                 id={`pm-${key}`}
                 className="h-9"
                 disabled={disabled}
+                maxLength={MAX_LEN[key]}
                 value={values[key] || ''}
                 onChange={(e) =>
                   onChange(key, UPPERCASE.has(key) ? e.target.value.toUpperCase() : e.target.value)

@@ -56,6 +56,9 @@ import UserIdManagement from './pages/UserIdManagement';
 import ApprovalManager from './pages/ApprovalManager';
 import DashboardManagement from './pages/DashboardManagement';
 import VerifyReceipt from './pages/VerifyReceipt';
+import InterestParties from './pages/InterestParties';
+import InterestPartyDetail from './pages/InterestPartyDetail';
+import InterestCalculator from './pages/InterestCalculator';
 import './App.css';
 import './fonts.css';
 
@@ -125,6 +128,11 @@ function App() {
             <Route path="/expenses" element={<ProtectedRoute requiredModule="expenses"><Expenses /></ProtectedRoute>} />
             <Route path="/expense-categories" element={<ProtectedRoute requiredModule="expenses"><ExpenseCategories /></ProtectedRoute>} />
             <Route path="/imprest" element={<ProtectedRoute requiredModule="imprest"><ImprestDashboard /></ProtectedRoute>} />
+
+            {/* Interest Management — standalone module */}
+            <Route path="/interest" element={<ProtectedRoute requiredModule="interest"><InterestParties /></ProtectedRoute>} />
+            <Route path="/interest/calculator" element={<ProtectedRoute requiredModule="interest"><InterestCalculator /></ProtectedRoute>} />
+            <Route path="/interest/:id" element={<ProtectedRoute requiredModule="interest"><InterestPartyDetail /></ProtectedRoute>} />
             <Route path="/reports" element={<ProtectedRoute requiredModule="reports"><Reports /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute requiredModule="settings"><Settings /></ProtectedRoute>} />
 

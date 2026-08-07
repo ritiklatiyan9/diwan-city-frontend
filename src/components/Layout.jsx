@@ -29,7 +29,7 @@ import {
   ChevronsUpDown, Tractor, Landmark, Wallet, Banknote, LayoutGrid, CreditCard,
   ClipboardList, BookOpen, ShieldCheck, Shield, ListChecks,
   UserPlus, Tags, Sheet, FilePlus2, FolderOpen, CalendarClock, MessageSquare, KeyRound, Lock,
-  Plus, BarChart3, Search,
+  Plus, BarChart3, Search, Percent, Calculator,
   Store, Menu, X, Package,
   Bell, Clock, CheckCircle2, XCircle, FileEdit, Send, Inbox, Loader2,
   LayoutDashboard,
@@ -275,6 +275,10 @@ const Layout = () => {
   const isDayBookActive = dayBookPaths.some(p => location.pathname.startsWith(p));
   const [dayBookOpen, setDayBookOpen] = useState(isDayBookActive);
 
+  // Interest Management collapsible state (standalone module)
+  const isInterestActive = location.pathname.startsWith('/interest');
+  const [interestOpen, setInterestOpen] = useState(isInterestActive);
+
   // Native Excel collapsible state
   const excelPaths = ['/excel'];
   const isExcelActive = excelPaths.some(p => location.pathname.startsWith(p));
@@ -307,6 +311,10 @@ const Layout = () => {
   useEffect(() => {
     if (isExcelActive) setExcelOpen(true);
   }, [isExcelActive]);
+
+  useEffect(() => {
+    if (isInterestActive) setInterestOpen(true);
+  }, [isInterestActive]);
 
   // Navigation items (User Management handled separately as collapsible)
   const navItems = useMemo(() => {
@@ -379,6 +387,12 @@ const Layout = () => {
     { path: '/daybook/bank', label: 'Bank Day Book', icon: Banknote },
   ];
 
+  // Interest Management child items
+  const interestChildren = [
+    { path: '/interest', label: 'Parties & Deals', icon: UsersRound },
+    { path: '/interest/calculator', label: 'Interest Calculator', icon: Calculator },
+  ];
+
   // Native Excel child items
   const excelChildren = [
     { path: '/excel/new', label: 'Create New', icon: FilePlus2 },
@@ -405,6 +419,7 @@ const Layout = () => {
     hasPermission('firm_transactions', 'read') && { key: 'firm',      label: 'Firm Transactions',  icon: Briefcase,    path: '/firm-transactions' },
     hasPermission('plot_registry', 'read')     && { key: 'registry',  label: 'Plot Registry',      icon: Library,      path: '/plot-registry' },
     hasPermission('imprest', 'read')           && { key: 'imprest',   label: 'Imprest',            icon: Wallet,       path: '/imprest' },
+    hasPermission('interest', 'read')          && { key: 'interest',  label: 'Interest Management',icon: Percent,      base: '/interest',        children: interestChildren },
     canReadExcel                               && { key: 'excel',     label: 'Native Excel',       icon: Sheet,        base: '/excel',           children: excelChildren },
     canReadChat                                && { key: 'chat',      label: 'Internal Chat',      icon: MessageSquare,path: '/chat' },
   ].filter(Boolean);
@@ -647,6 +662,7 @@ const Layout = () => {
     if (path.startsWith('/plot-registry')) return 'bg-fuchsia-50 text-fuchsia-700';
     if (path.startsWith('/expenses') || path.startsWith('/expense-categories') || path.startsWith('/expense-approvals')) return 'bg-rose-50 text-rose-700';
     if (path.startsWith('/imprest') || path.startsWith('/imprest-management')) return 'bg-lime-50 text-lime-700';
+    if (path.startsWith('/interest')) return 'bg-pink-50 text-pink-700';
     if (path.startsWith('/excel')) return 'bg-green-50 text-green-700';
     if (path.startsWith('/chat')) return 'bg-purple-50 text-purple-700';
     if (path.startsWith('/settings')) return 'bg-slate-100 text-slate-700';
@@ -704,6 +720,7 @@ const Layout = () => {
     if (hasPermission('daybook', 'read')) dayBookChildren.forEach(i => list.push({ ...i, group: 'Day Book' }));
     if (hasPermission('plot_payments', 'read')) plotPayChildren.forEach(i => list.push({ ...i, group: 'Plot Payments' }));
     if (hasPermission('expenses', 'read')) expenseChildren.forEach(i => list.push({ ...i, group: 'Expenses' }));
+    if (hasPermission('interest', 'read')) interestChildren.forEach(i => list.push({ ...i, group: 'Interest Management' }));
     if (canReadExcel) excelChildren.forEach(i => list.push({ ...i, group: 'Native Excel' }));
     if (canReadChat) list.push({ path: '/chat', label: 'Internal Chat', icon: MessageSquare });
     if (isAdmin) adminNavItems.forEach(i => list.push({ ...i, group: 'Admin' }));
@@ -1025,6 +1042,21 @@ const Layout = () => {
               {navItems.filter(i => i.path === '/imprest').map((item) => (
                 <NavLink key={item.path} item={item} />
               ))}
+
+              {hasPermission('interest', 'read') && (
+                <Collapsible open={interestOpen} onOpenChange={setInterestOpen}>
+                  <CollapsibleTrigger asChild>
+                    <button className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-medium transition-colors ${isInterestActive ? 'bg-slate-100 text-slate-900' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'}`}>
+                      <span className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 ${getIconTone('/interest')}`}><Percent className="w-3.5 h-3.5" /></span>
+                      <span className="flex-1 text-left">Interest Management</span>
+                      {interestOpen ? <ChevronDown className="w-3.5 h-3.5 text-slate-400" /> : <ChevronRight className="w-3.5 h-3.5 text-slate-400" />}
+                    </button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="space-y-0.5 mt-0.5">
+                    <TreeGroup items={interestChildren} getIconTone={getIconTone} />
+                  </CollapsibleContent>
+                </Collapsible>
+              )}
 
               {canReadExcel && (
                 <Collapsible open={excelOpen} onOpenChange={setExcelOpen}>

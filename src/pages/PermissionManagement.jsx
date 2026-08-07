@@ -15,7 +15,7 @@ import { Badge } from '../components/ui/badge';
 import {
     Shield, Users, Tractor, Landmark, BookOpen, Wallet, Banknote,
     LayoutGrid, ClipboardList, CreditCard, Home, FileText, Settings,
-    Save, Loader2, CheckCircle2, AlertCircle, Store, MessageSquare, Sheet,
+    Save, Loader2, CheckCircle2, AlertCircle, Store, MessageSquare, Sheet, Percent,
 } from 'lucide-react';
 
 const MODULE_CONFIG = [
@@ -31,6 +31,7 @@ const MODULE_CONFIG = [
     { key: 'plot_registry', label: 'Plot Registry', icon: ClipboardList },
     { key: 'expenses', label: 'Expenses', icon: CreditCard },
     { key: 'imprest', label: 'Imprest', icon: Wallet },
+    { key: 'interest', label: 'Interest Management', icon: Percent },
     { key: 'chat', label: 'Internal Chat', icon: MessageSquare },
     { key: 'excel', label: 'Native Excel', icon: Sheet },
     { key: 'reports', label: 'Reports', icon: FileText, readOnly: true },
