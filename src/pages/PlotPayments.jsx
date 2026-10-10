@@ -48,6 +48,9 @@ import ApprovalStatusBadge from '../components/ApprovalStatusBadge';
 import ChequeStatusControl from '../components/ChequeStatusControl';
 import { PAYMENT_FROM_OPTIONS, derivePaymentType } from '../constants/paymentOptions';
 import { mul, diverges, resolveSalePrice } from '../utils/plotPricing';
+import { FLAT_SHOP_UNITS } from '../constants/flatShopLayout';
+import { colonyUnitNo, colonyUnitKey, isColonyUnit, filterColonyUnits } from '../utils/colonyUnits';
+import ColonyUnitSyncButton from '../components/ColonyUnitSyncButton';
 
 // ── Constants ──
 // Literal class strings per tone — Tailwind's scanner cannot see interpolated names.
@@ -239,6 +242,7 @@ const PlotRow = memo(function PlotRow({ row, isSelected, onToggleSelect, onNavig
           <span className="text-sm font-bold text-blue-700">{pl.plot_no}</span>
           {pl.plot_tag && <Badge variant="outline" className={`text-[9px] leading-none px-1.5 py-0.5 font-bold whitespace-nowrap shrink-0 ${pl.plot_tag === 'OLD' ? 'bg-slate-100 text-slate-500 border-slate-300' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>{pl.plot_tag}</Badge>}
         </div>
+        {isColonyUnit(pl) && <span className="text-[10px] text-slate-400">{colonyUnitKey(pl).startsWith('S') ? 'Shop' : 'Flat'}</span>}
       </td>
       <td className="sticky left-24 z-10 bg-white px-3 py-2" style={{boxShadow: '2px 0 4px -1px rgba(0,0,0,0.08)'}}>
         <Badge variant="outline" className={`text-[10px] font-medium ${STATUS_COLORS[pl.status] || 'bg-slate-50 text-slate-600 border-slate-200'}`}>{pl.status}</Badge>
@@ -442,6 +446,7 @@ const PlotPayments = () => {
   const [debouncedSearch, setDebouncedSearch] = useState(_savedFilters.listSearch || '');
   const [filterBookingBy, setFilterBookingBy] = useState(_savedFilters.filterBookingBy || 'all');
   const [filterStatus, setFilterStatus] = useState(_savedFilters.filterStatus || 'all');
+  const [filterUnitType, setFilterUnitType] = useState('all');
   const [filterTeam, setFilterTeam] = useState(_savedFilters.filterTeam || 'all');
   const [filterMemberTeam, setFilterMemberTeam] = useState(_savedFilters.filterMemberTeam || 'all');
   const [filterPending, setFilterPending] = useState(_savedFilters.filterPending || 'all');
@@ -1168,7 +1173,7 @@ const PlotPayments = () => {
 
   // ── Filtering ──
   const filteredPlots = useMemo(() => {
-    let list = plots;
+    let list = filterColonyUnits(plots, filterUnitType);
     if (filterStatus !== 'all') list = list.filter(p => p.status === filterStatus);
     if (filterBookingBy !== 'all') list = list.filter(p => p.booking_by === filterBookingBy || (p.payment_booked_bys || '').toUpperCase().includes(filterBookingBy.toUpperCase()));
     if (filterTeam !== 'all') list = list.filter(p => (p.team || '') === filterTeam);
@@ -1233,7 +1238,7 @@ const PlotPayments = () => {
       return naturalSortPlotNo(a.plot_no, b.plot_no);
     });
     return list;
-  }, [plots, debouncedSearch, filterStatus, filterBookingBy, filterTeam, filterMemberTeam, memberTeamMap, filterPending, customPendingMin, customPendingMax, sortBy]);
+  }, [plots, debouncedSearch, filterStatus, filterBookingBy, filterTeam, filterMemberTeam, memberTeamMap, filterPending, customPendingMin, customPendingMax, sortBy, filterUnitType]);
 
   // ── Pre-computed row data (avoids per-render parseFloat in JSX) ──
   const rowData = useMemo(() => filteredPlots.map(pl => {
@@ -1946,7 +1951,7 @@ const PlotPayments = () => {
                   {editingPlot ? <Edit2 className="w-4 h-4" /> : <MapPin className="w-4 h-4" />}
                 </div>
                 <div>
-                  <DialogTitle className="text-base font-semibold text-slate-900">{editingPlot && !canUpdate ? 'Request Plot Edit' : editingPlot ? 'Edit Plot' : 'Add Plot'}</DialogTitle>
+                  <DialogTitle className="text-base font-semibold text-slate-900">{editingPlot && !canUpdate ? 'Request Plot Edit' : editingPlot ? 'Edit Unit' : 'Add Plot / Flat / Shop'}</DialogTitle>
                   <DialogDescription className="text-sm text-slate-500">
                 {editingPlot && !canUpdate ? 'Submit an edit request with proof photo for admin approval.' : editingPlot ? 'Update plot details.' : 'Register a new plot sale / booking.'}
                   </DialogDescription>
@@ -2002,6 +2007,23 @@ const PlotPayments = () => {
               onSubmit={handleSubmitPlot}
               className="space-y-4 p-5 bg-white [&_label]:text-[11px] [&_label]:font-semibold [&_label]:uppercase [&_label]:tracking-wide [&_label]:text-slate-600 [&_input]:bg-slate-50 [&_input]:border-slate-200 [&_input]:focus-visible:ring-slate-400"
             >
+              {!editingPlot && (
+                <div className="space-y-1.5">
+                  <Label>Choose a flat or shop from the layout</Label>
+                  <Select value={isColonyUnit(plotForm) ? colonyUnitKey(plotForm) : '_none'}
+                    onValueChange={(number) => {
+                      if (number !== '_none') setPlotForm((prev) => ({ ...prev, block: number[0], plot_no: number }));
+                    }}>
+                    <SelectTrigger><SelectValue placeholder="Select flat or shop" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_none">Select flat or shop...</SelectItem>
+                      {[...FLAT_SHOP_UNITS].sort((a, b) => a.block.localeCompare(b.block) || Number(a.no) - Number(b.no)).map((unit) => (
+                        <SelectItem key={colonyUnitNo(unit)} value={colonyUnitNo(unit)}>{unit.type} {colonyUnitNo(unit)}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               {/* Row 1: Block, Plot No, Status */}
               <div className="rounded-lg border border-slate-200 bg-white p-4 space-y-3">
                 <div className="flex items-center gap-2">
@@ -3644,10 +3666,10 @@ const PlotPayments = () => {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-base font-semibold text-slate-900 leading-tight">Plot Payments</h1>
-                <Badge variant="secondary" className="h-5 rounded-full px-2 text-[10px] font-medium tabular-nums">{filteredPlots.length} plots</Badge>
+                <Badge variant="secondary" className="h-5 rounded-full px-2 text-[10px] font-medium tabular-nums">{filteredPlots.length} units</Badge>
               </div>
               <p className="text-[11px] text-slate-500 leading-tight">
-                Payment tracking for <span className="font-medium text-slate-700">{currentSite.name}</span>
+                Plot, flat &amp; shop payments — <span className="font-medium text-slate-700">{currentSite.name}</span>
               </p>
             </div>
           </div>
@@ -3658,9 +3680,13 @@ const PlotPayments = () => {
             <Button variant="outline" size="sm" onClick={printSelectedPlots} className="text-xs h-8 rounded-lg" disabled={filteredPlots.length === 0}>
               <Printer className="w-3.5 h-3.5 mr-1" /> {selectedPlotIds.size > 0 ? `Print (${selectedPlotIds.size})` : 'Print All'}
             </Button>
-            {canManage && (
+            {canWrite && (
+              <ColonyUnitSyncButton key={siteId} records={plots} siteId={siteId}
+                siteName={currentSite.name} loading={loadingPlots} onCreated={fetchPlots} />
+            )}
+            {canWrite && (
               <Button size="sm" onClick={handleOpenCreatePlot} className="h-8 rounded-lg">
-                <Plus className="w-4 h-4 mr-1.5" /> Add Plot
+                <Plus className="w-4 h-4 mr-1.5" /> Add Unit
               </Button>
             )}
           </div>
@@ -3671,11 +3697,23 @@ const PlotPayments = () => {
           <div className="relative w-full sm:w-64 mr-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
             <Input
-              placeholder="Search plots, buyers, booking by…"
+              placeholder="Search plots, flats, shops, buyers…"
               value={listSearch} onChange={(e) => setListSearch(e.target.value)}
               className="pl-8 h-7 text-xs rounded-full bg-slate-50/80 border-slate-200 focus-visible:bg-white"
             />
           </div>
+          <Select value={filterUnitType} onValueChange={(value) => { setFilterUnitType(value); setSelectedPlotIds(new Set()); }}>
+            <SelectTrigger aria-label="Unit type" className={`${chipBase} ${filterUnitType !== 'all' ? chipOn : chipOff}`}>
+              <Building2 className="h-3 w-3 opacity-60" /><SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All units</SelectItem>
+              <SelectItem value="plots">Plots — P1–P86</SelectItem>
+              <SelectItem value="flats">Flats — A1–D6</SelectItem>
+              <SelectItem value="shops">Shops — S1–S5</SelectItem>
+              <SelectItem value="layout">Flats &amp; Shops</SelectItem>
+            </SelectContent>
+          </Select>
           <Filter className="h-3.5 w-3.5 text-slate-300 hidden sm:block" />
           <Popover open={filterBookingByOpen} onOpenChange={setFilterBookingByOpen}>
               <PopoverTrigger asChild>
@@ -3798,8 +3836,8 @@ const PlotPayments = () => {
                 <SelectItem value="plot_no">Plot No</SelectItem>
               </SelectContent>
             </Select>
-            {(listSearch || filterBookingBy !== 'all' || filterStatus !== 'all' || filterTeam !== 'all' || filterMemberTeam !== 'all' || filterPending !== 'all' || customPendingMin || customPendingMax) && (
-              <Button variant="ghost" size="sm" onClick={() => { setListSearch(''); setFilterBookingBy('all'); setFilterStatus('all'); setFilterTeam('all'); setFilterMemberTeam('all'); setFilterPending('all'); setCustomPendingMin(''); setCustomPendingMax(''); }} className="h-7 rounded-full px-2.5 text-xs text-rose-500 hover:text-rose-600 hover:bg-rose-50">
+            {(filterUnitType !== 'all' || listSearch || filterBookingBy !== 'all' || filterStatus !== 'all' || filterTeam !== 'all' || filterMemberTeam !== 'all' || filterPending !== 'all' || customPendingMin || customPendingMax) && (
+              <Button variant="ghost" size="sm" onClick={() => { setFilterUnitType('all'); setSelectedPlotIds(new Set()); setListSearch(''); setFilterBookingBy('all'); setFilterStatus('all'); setFilterTeam('all'); setFilterMemberTeam('all'); setFilterPending('all'); setCustomPendingMin(''); setCustomPendingMax(''); }} className="h-7 rounded-full px-2.5 text-xs text-rose-500 hover:text-rose-600 hover:bg-rose-50">
                 <X className="w-3 h-3 mr-1" /> Clear
               </Button>
             )}
@@ -3833,7 +3871,7 @@ const PlotPayments = () => {
                         }}
                         className="w-3.5 h-3.5 rounded border-slate-300 cursor-pointer" />
                     </th>
-                    <th className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 w-16 sticky left-8 z-40 bg-slate-50 px-3 py-2 text-left">Plot No</th>
+                    <th className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 w-16 sticky left-8 z-40 bg-slate-50 px-3 py-2 text-left">Unit No</th>
                     <th className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 w-24 sticky left-24 z-40 bg-slate-50 px-3 py-2 text-left" style={{boxShadow: '2px 0 4px -1px rgba(0,0,0,0.08)'}}>Status</th>
                     <th className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 w-14 px-3 py-2 text-left">Block</th>
                     <th className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 px-3 py-2 text-left">Buyer Name</th>
