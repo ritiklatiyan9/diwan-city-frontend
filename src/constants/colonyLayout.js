@@ -1,6 +1,8 @@
+import { FLAT_SHOP_UNITS, FLAT_SHOP_COMMON_AREAS } from './flatShopLayout.js';
+
 // Diwan City colony layout — digitized from the approved layout plan PDF (page 2).
-// All coordinates are in feet, matching the plan's dimensions. Sizes are in sq. yards (gaj).
-// Block P = residential plots {1}–{86}, Block S = shop strip along the south 40' road.
+// Original plot coordinates are in feet; sizes are in sq. yards (gaj).
+// P1–P86 retain the approved plan. The added flat/shop strip is schematic.
 
 const plots = [];
 const add = (block, no, size, x, y, w, h) =>
@@ -62,18 +64,18 @@ add('P', 85, 111.94, C2, 428.75, 21, 45);
 add('P', 84, 112.71, C3, 428.75, 21, 45);
 add('P', 83, 115.88, C4, 428.75, 23.5, 45);
 
-// ── Block S: shop strip along the south 40' road (marked plots on the plan) ──
-const SX = 248, SW = 25;
-for (let i = 0; i < 8; i++) add('S', 8 - i, 66.67, SX, 487 + i * 24, SW, 24); // S8 (top) … S1 (at gate)
-add('S', 9, 66.67, SX, 679, SW, 24);
-add('S', 10, 25.00, SX, 703, SW, 9);
-add('S', 11, 33.33, SX, 712, SW, 12);
-add('S', 12, 33.33, SX, 724, SW, 12);
-add('S', 13, 33.33, SX, 736, SW, 12);
-add('S', 14, 43.19, SX, 748, 12.5, 31.1);
-add('S', 15, 43.19, SX + 12.5, 748, 12.5, 31.1);
-
-export const COLONY_PLOTS = plots;
+// Replace the former S1–S15 strip with the confirmed flat/shop plan.
+// The existing P1–P86 colony, roads and landmarks keep their coordinates.
+// Rotate the sketch down the same south strip; drawing dimensions are schematic.
+const inSouthStrip = (area) => ({
+  ...area,
+  x: 387.2 - (area.y + area.h) * 0.6,
+  y: 479.72 + area.x * 0.26,
+  w: area.h * 0.6,
+  h: area.w * 0.26,
+});
+export const COLONY_PLOTS = [...plots, ...FLAT_SHOP_UNITS.map(inSouthStrip)];
+export const FLAT_SHOP_AREAS = FLAT_SHOP_COMMON_AREAS.map(inSouthStrip);
 
 export const ROADS = [
   { x: 56, y: 0, w: 40, h: 428.75 },        // west ROAD 40'
@@ -120,4 +122,4 @@ export const COMPASS = { x: 95, y: 600 };
 export const BYPASS_ROAD = { x1: 120, x2: 355, y: 812, label: 'GOHARNI BYPASS ROAD' };
 
 // viewBox covering the whole plan incl. labels
-export const VIEWBOX = '-14 -20 392 880';
+export const VIEWBOX = '-14 -20 392 990';

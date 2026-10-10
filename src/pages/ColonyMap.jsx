@@ -1,14 +1,17 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { Map as MapIcon, RefreshCw, Loader2, ZoomIn, ZoomOut, Plus } from 'lucide-react';
+import { motion as Motion } from 'framer-motion';
+import { Map as MapIcon, RefreshCw, Loader2, ZoomIn, ZoomOut } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '../api/api';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui/button';
 import {
-  COLONY_PLOTS, ROADS, ROAD_LABELS, CHAKROAD_BANDS, PARKS, TEMPLE, GATE, COMPASS, BYPASS_ROAD, VIEWBOX,
+  COLONY_PLOTS, ROADS, ROAD_LABELS, CHAKROAD_BANDS, PARKS, TEMPLE, GATE, COMPASS, BYPASS_ROAD, VIEWBOX, FLAT_SHOP_AREAS,
 } from '../constants/colonyLayout';
+import { FLAT_SHOP_UNITS, FLAT_SHOP_COMMON_AREAS } from '../constants/flatShopLayout';
+import { colonyUnitNo, indexColonyUnits } from '../utils/colonyUnits';
+import ColonyUnitSyncButton from '../components/ColonyUnitSyncButton';
 
 const ROAD_FILL = '#6d3f50';
 const PARK_FILL = '#d9f4d0';
@@ -41,20 +44,27 @@ const LEGEND = [
   { label: 'Not created', color: MISSING_FILL, match: null },
 ];
 
-const plotKey = (block, no) =>
-  `${String(block || '').toUpperCase().replace(/[^A-Z]/g, '')}${String(no || '').replace(/\D/g, '')}`;
-
 function PlotShape({ pl, rec, hovered, onHover, onClick }) {
   const status = String(rec?.status || '').toUpperCase();
   const fill = rec ? (STATUS_FILL[status] || OTHER_FILL) : MISSING_FILL;
-  const label = `{${pl.no}}`;
-  const size = pl.size.toFixed(2);
+  const label = pl.block === 'P' ? `{${pl.no}}` : colonyUnitNo(pl);
+  const size = Number(pl.size || rec?.plot_size) > 0 ? Number(pl.size || rec.plot_size).toFixed(2) : '';
   const cx = pl.x + pl.w / 2, cy = pl.y + pl.h / 2;
   const sideBySide = pl.w >= 40;
   const tiny = pl.h < 20 || pl.w < 20;
   const fs = sideBySide ? 7 : tiny ? 4.2 : pl.w >= 24 ? 5.5 : 6;
   return (
     <g
+      role="button" tabIndex={0}
+      aria-label={`${pl.type || 'Plot'} ${colonyUnitNo(pl)}, ${rec ? status : 'not created'}`}
+      onFocus={() => onHover({ pl, rec })}
+      onBlur={() => onHover(null)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onClick(pl, rec);
+        }
+      }}
       onMouseEnter={() => onHover({ pl, rec })}
       onMouseLeave={() => onHover(null)}
       onClick={() => onClick(pl, rec)}
@@ -65,7 +75,9 @@ function PlotShape({ pl, rec, hovered, onHover, onClick }) {
         fill={fill} fillOpacity={rec ? 0.9 : 1}
         stroke={hovered ? '#0f172a' : '#1e293b'} strokeWidth={hovered ? 1.6 : 0.55}
       />
-      {sideBySide ? (
+      {pl.type ? (
+        <text x={cx} y={cy} fontSize={pl.w > 60 ? 7 : 5.8} fill="#1d4ed8" fontWeight="700" textAnchor="middle" dominantBaseline="central">{label}</text>
+      ) : sideBySide ? (
         <>
           <text x={pl.x + pl.w * 0.3} y={cy} fontSize={fs} fill="#1d4ed8" fontWeight="700" textAnchor="middle" dominantBaseline="central">{label}</text>
           <text x={pl.x + pl.w * 0.68} y={cy} fontSize={fs} fill="#be185d" fontWeight="600" textAnchor="middle" dominantBaseline="central">{size}</text>
@@ -95,8 +107,6 @@ export default function ColonyMap() {
   const [loading, setLoading] = useState(false);
   const [hover, setHover] = useState(null);
   const [zoom, setZoom] = useState(1);
-  const [syncing, setSyncing] = useState(false);
-  const [syncDone, setSyncDone] = useState(0);
 
   const fetchPlots = useCallback(async () => {
     if (!siteId) return;
@@ -113,29 +123,13 @@ export default function ColonyMap() {
 
   useEffect(() => { fetchPlots(); }, [fetchPlots]);
 
-  // Index DB plots by BLOCK+NUMBER; prefer the active record over RESALE "OLD" duplicates
-  const plotIndex = useMemo(() => {
-    const idx = new Map();
-    for (const p of dbPlots) {
-      const block = String(p.block || '').toUpperCase().replace(/[^A-Z]/g, '')
-        || String(p.plot_no || '').toUpperCase().replace(/[^A-Z]/g, '');
-      const key = plotKey(block, p.plot_no);
-      const prev = idx.get(key);
-      if (!prev || String(prev.plot_tag || '').toUpperCase() === 'OLD') idx.set(key, p);
-    }
-    return idx;
-  }, [dbPlots]);
-
-  const missing = useMemo(
-    () => COLONY_PLOTS.filter((pl) => !plotIndex.has(pl.block + pl.no)),
-    [plotIndex],
-  );
+  const plotIndex = useMemo(() => indexColonyUnits(dbPlots), [dbPlots]);
 
   const legendCounts = useMemo(() => {
     const counts = {};
     for (const item of LEGEND) counts[item.label] = 0;
     for (const pl of COLONY_PLOTS) {
-      const rec = plotIndex.get(pl.block + pl.no);
+      const rec = plotIndex.get(colonyUnitNo(pl));
       if (!rec) { counts['Not created']++; continue; }
       const s = String(rec.status || '').toUpperCase();
       const hit = LEGEND.find((l) => l.match && l.match(s));
@@ -146,41 +140,12 @@ export default function ColonyMap() {
 
   const handlePlotClick = useCallback((pl, rec) => {
     if (rec) navigate(`/plot-payments/${rec.id}`);
-    else toast.info(`Plot ${pl.block}${pl.no} has no record yet${canWrite ? ' — use "Create missing plots"' : ''}`);
+    else toast.info(`${pl.type || 'Plot'} ${colonyUnitNo(pl)} has no record yet${canWrite ? ' — use "Create missing units"' : ''}`);
   }, [navigate, canWrite]);
-
-  const handleSync = async () => {
-    if (!siteId || syncing || missing.length === 0) return;
-    if (!window.confirm(`Create ${missing.length} plots from the colony layout for "${currentSite?.name}"?\n\nBlock P (plots) + Block S (shops), sizes from the layout plan, status COMPANY.`)) return;
-    setSyncing(true);
-    setSyncDone(0);
-    let created = 0, failed = 0;
-    for (const pl of missing) {
-      try {
-        await api.post('/plots', {
-          site_id: siteId,
-          plot_no: `${pl.block}${pl.no}`,
-          block: pl.block,
-          plot_size: pl.size,
-          plot_size_mtr: +(pl.size * 0.83612736).toFixed(2), // gaj → sq. metres
-          status: 'COMPANY',
-          notes: 'Created from colony layout map',
-        });
-        created++;
-      } catch (err) {
-        if (err.response?.status !== 409) failed++; // 409 = already exists, fine
-      }
-      setSyncDone((d) => d + 1);
-    }
-    setSyncing(false);
-    if (failed) toast.warning(`${created} plots created, ${failed} failed`);
-    else toast.success(`${created} plots created from layout`);
-    fetchPlots();
-  };
 
   return (
     <div className="mx-auto max-w-[1400px] space-y-4 p-1">
-      <motion.div
+      <Motion.div
         initial={{ opacity: 0, y: -12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
@@ -195,7 +160,7 @@ export default function ColonyMap() {
               <div>
                 <h1 className="text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">Colony Map</h1>
                 <p className="text-[13px] text-slate-500">
-                  {currentSite?.name || 'No site selected'} — live plot status from the layout plan
+                  {currentSite?.name || 'No site selected'} — 86 plots · 24 flats · 5 shops
                 </p>
               </div>
             </div>
@@ -223,16 +188,13 @@ export default function ColonyMap() {
               {loading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1.5 h-4 w-4" />}
               Refresh
             </Button>
-            {canWrite && missing.length > 0 && (
-              <Button size="sm" onClick={handleSync} disabled={syncing || !siteId} className="bg-emerald-600 hover:bg-emerald-700 text-white">
-                {syncing
-                  ? <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" />{syncDone}/{missing.length}</>
-                  : <><Plus className="mr-1.5 h-4 w-4" />Create {missing.length} missing plots</>}
-              </Button>
+            {canWrite && (
+              <ColonyUnitSyncButton key={siteId} records={dbPlots} siteId={siteId}
+                siteName={currentSite?.name} loading={loading} onCreated={fetchPlots} />
             )}
           </div>
         </div>
-      </motion.div>
+      </Motion.div>
 
       <div className="relative overflow-hidden rounded-3xl border border-slate-200/70 bg-white shadow-[0_2px_24px_-10px_rgba(30,41,59,0.18)]">
         {!siteId ? (
@@ -315,17 +277,62 @@ export default function ColonyMap() {
                 <text x={-32} y={0} fontSize={9} fontWeight="700" fill="#1d4ed8" textAnchor="middle" dominantBaseline="central">W</text>
               </g>
 
-              {/* Plots */}
+              {/* Flats, office and stairs replace the former S1–S15 strip. */}
+              {FLAT_SHOP_AREAS.map((area) => (
+                <g key={area.id}>
+                  <rect x={area.x} y={area.y} width={area.w} height={area.h}
+                    fill={area.id === 'office' ? '#dbeafe' : '#e2e8f0'} stroke="#1e293b" strokeWidth={0.55} />
+                  <text x={area.x + area.w / 2} y={area.y + area.h / 2}
+                    fontSize={area.id === 'office' ? 7 : 4.8} fontWeight="700" fill="#475569"
+                    textAnchor="middle" dominantBaseline="central">{area.label}</text>
+                </g>
+              ))}
+
+              {/* Plots and flat/shop units */}
               {COLONY_PLOTS.map((pl) => (
                 <PlotShape
-                  key={pl.block + pl.no}
+                  key={colonyUnitNo(pl)}
                   pl={pl}
-                  rec={plotIndex.get(pl.block + pl.no)}
+                  rec={plotIndex.get(colonyUnitNo(pl))}
                   hovered={hover?.pl === pl}
                   onHover={setHover}
                   onClick={handlePlotClick}
                 />
               ))}
+              <g transform="translate(-3 850) scale(0.29)">
+                <text x={628} y={18} fontSize={22} fontWeight="700" fill="#334155" textAnchor="middle">FLATS &amp; SHOPS — LAYOUT DETAIL</text>
+                {FLAT_SHOP_COMMON_AREAS.map((area) => (
+                  <g key={area.id}>
+                    <rect x={area.x} y={area.y} width={area.w} height={area.h}
+                      fill={area.id === 'office' ? '#dbeafe' : '#e2e8f0'} stroke="#64748b" strokeWidth={2} />
+                    <text x={area.x + area.w / 2} y={area.y + area.h / 2} fontSize={area.vertical ? 14 : 20}
+                      fontWeight="700" fill="#475569" textAnchor="middle" dominantBaseline="central"
+                      transform={area.vertical ? `rotate(-90 ${area.x + area.w / 2} ${area.y + area.h / 2})` : undefined}>{area.label}</text>
+                  </g>
+                ))}
+                {FLAT_SHOP_UNITS.map((unit) => {
+                  const rec = plotIndex.get(colonyUnitNo(unit));
+                  const status = String(rec?.status || '').toUpperCase();
+                  return (
+                    <g key={colonyUnitNo(unit)} role="button" tabIndex={0}
+                      aria-label={`${unit.type} ${colonyUnitNo(unit)}, ${rec ? status : 'not created'}`}
+                      onMouseEnter={() => setHover({ pl: unit, rec })} onMouseLeave={() => setHover(null)}
+                      onFocus={() => setHover({ pl: unit, rec })} onBlur={() => setHover(null)}
+                      onClick={() => handlePlotClick(unit, rec)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault(); handlePlotClick(unit, rec);
+                        }
+                      }} style={{ cursor: 'pointer' }}>
+                      <rect x={unit.x} y={unit.y} width={unit.w} height={unit.h}
+                        fill={rec ? STATUS_FILL[status] || OTHER_FILL : MISSING_FILL}
+                        stroke={hover?.pl === unit ? '#0f172a' : '#64748b'} strokeWidth={hover?.pl === unit ? 5 : 2} />
+                      <text x={unit.x + unit.w / 2} y={unit.y + unit.h / 2} fontSize={22}
+                        fontWeight="700" fill="#1d4ed8" textAnchor="middle" dominantBaseline="central">{colonyUnitNo(unit)}</text>
+                    </g>
+                  );
+                })}
+              </g>
             </svg>
           </div>
         )}
@@ -335,7 +342,7 @@ export default function ColonyMap() {
           <div className="pointer-events-none absolute right-4 top-4 z-20 w-60 rounded-2xl border border-slate-200 bg-white/95 p-3.5 shadow-lg backdrop-blur">
             <div className="flex items-center justify-between">
               <span className="text-sm font-bold text-slate-900">
-                {hover.pl.block === 'S' ? 'Shop' : 'Plot'} {hover.pl.block}{hover.pl.no}
+                {hover.pl.type || 'Plot'} {colonyUnitNo(hover.pl)}
               </span>
               <span
                 className="rounded-full border border-slate-300 px-2 py-0.5 text-[11px] font-semibold text-slate-700"
@@ -345,7 +352,7 @@ export default function ColonyMap() {
               </span>
             </div>
             <div className="mt-2 space-y-1 text-[12px] text-slate-600">
-              <div className="flex justify-between"><span>Size</span><span className="font-semibold text-slate-800">{hover.pl.size.toFixed(2)} gaj</span></div>
+              <div className="flex justify-between"><span>Size</span><span className="font-semibold text-slate-800">{Number(hover.pl.size || hover.rec?.plot_size) > 0 ? `${Number(hover.pl.size || hover.rec.plot_size).toFixed(2)} gaj` : 'Not entered'}</span></div>
               {hover.rec?.buyer_name && (
                 <div className="flex justify-between"><span>Buyer</span><span className="max-w-[130px] truncate font-semibold text-slate-800">{hover.rec.buyer_name}</span></div>
               )}
@@ -355,7 +362,7 @@ export default function ColonyMap() {
               {hover.rec && Number(hover.rec.total_received) > 0 && (
                 <div className="flex justify-between"><span>Received</span><span className="font-semibold text-emerald-700">₹{Number(hover.rec.total_received).toLocaleString('en-IN')}</span></div>
               )}
-              <p className="pt-1 text-[11px] text-slate-400">{hover.rec ? 'Click to open plot details' : 'No record in plot payments yet'}</p>
+              <p className="pt-1 text-[11px] text-slate-400">{hover.rec ? 'Click to open unit payments' : 'No record in plot payments yet'}</p>
             </div>
           </div>
         )}
