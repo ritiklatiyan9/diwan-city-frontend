@@ -445,6 +445,9 @@ const PlotPayments = () => {
   const [listSearch, setListSearch] = useState(_savedFilters.listSearch || '');
   const [debouncedSearch, setDebouncedSearch] = useState(_savedFilters.listSearch || '');
   const [filterBookingBy, setFilterBookingBy] = useState(_savedFilters.filterBookingBy || 'all');
+  const [filterBuyer, setFilterBuyer] = useState(_savedFilters.filterBuyer || 'all');
+  const [filterBuyerOpen, setFilterBuyerOpen] = useState(false);
+  const [filterBuyerSearch, setFilterBuyerSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState(_savedFilters.filterStatus || 'all');
   const [filterUnitType, setFilterUnitType] = useState('all');
   const [filterTeam, setFilterTeam] = useState(_savedFilters.filterTeam || 'all');
@@ -470,10 +473,10 @@ const PlotPayments = () => {
   // Persist plot list filters to sessionStorage
   useEffect(() => {
     sessionStorage.setItem('plotPaymentFilters', JSON.stringify({
-      listSearch, filterBookingBy, filterStatus, filterTeam, filterMemberTeam, filterPending,
+      listSearch, filterBookingBy, filterBuyer, filterStatus, filterTeam, filterMemberTeam, filterPending,
       customPendingMin, customPendingMax, sortBy,
     }));
-  }, [listSearch, filterBookingBy, filterStatus, filterTeam, filterMemberTeam, filterPending, customPendingMin, customPendingMax, sortBy]);
+  }, [listSearch, filterBookingBy, filterBuyer, filterStatus, filterTeam, filterMemberTeam, filterPending, customPendingMin, customPendingMax, sortBy]);
 
   useEffect(() => {
     if (queryFromUrl) setListSearch(queryFromUrl);
@@ -1175,6 +1178,10 @@ const PlotPayments = () => {
   const filteredPlots = useMemo(() => {
     let list = filterColonyUnits(plots, filterUnitType);
     if (filterStatus !== 'all') list = list.filter(p => p.status === filterStatus);
+    if (filterBuyer !== 'all') list = list.filter(p =>
+      (p.buyer_name || '').trim() === filterBuyer ||
+      (p.payment_buyer_names || '').split(',').some(name => name.trim() === filterBuyer)
+    );
     if (filterBookingBy !== 'all') list = list.filter(p => p.booking_by === filterBookingBy || (p.payment_booked_bys || '').toUpperCase().includes(filterBookingBy.toUpperCase()));
     if (filterTeam !== 'all') list = list.filter(p => (p.team || '') === filterTeam);
     if (filterMemberTeam !== 'all') list = list.filter(p => {
@@ -1238,7 +1245,7 @@ const PlotPayments = () => {
       return naturalSortPlotNo(a.plot_no, b.plot_no);
     });
     return list;
-  }, [plots, debouncedSearch, filterStatus, filterBookingBy, filterTeam, filterMemberTeam, memberTeamMap, filterPending, customPendingMin, customPendingMax, sortBy, filterUnitType]);
+  }, [plots, debouncedSearch, filterStatus, filterBookingBy, filterBuyer, filterTeam, filterMemberTeam, memberTeamMap, filterPending, customPendingMin, customPendingMax, sortBy, filterUnitType]);
 
   // ── Pre-computed row data (avoids per-render parseFloat in JSX) ──
   const rowData = useMemo(() => filteredPlots.map(pl => {
@@ -1390,6 +1397,15 @@ const PlotPayments = () => {
   const firstInstallment = parseFloat(plotMeta?.first_installment) || 0; // Column Q
   const balanceFirstInstallment = firstInstallment - totalReceived; // Column R
 
+  const uniqueBuyers = useMemo(() => {
+    const names = new Set();
+    plots.forEach(p => {
+      if (p.buyer_name?.trim()) names.add(p.buyer_name.trim());
+      (p.payment_buyer_names || '').split(',').forEach(name => { if (name.trim()) names.add(name.trim()); });
+    });
+    return [...names].sort((a, b) => a.localeCompare(b));
+  }, [plots]);
+
   // Unique values for plot list filters — show ALL members + any payment-level booked_by
   const uniqueBookingBys = useMemo(() => {
     const names = new Set();
@@ -1450,7 +1466,7 @@ const PlotPayments = () => {
       if (isActive(t)) cumulative += parseFloat(t.amount) || 0;
       return [
         i + 1,
-        t.date ? new Date(t.date).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '',
+        t.date ? fmtDate(t.date) : '',
         t.payment_from || '',
         t.payment_type || 'CASH',
         t.bank_details || '',
@@ -1514,7 +1530,7 @@ const PlotPayments = () => {
         p.circle_rate || '', toRecBank, toRecCash,
         recBank, balBank, recCash, balCash,
         tr, bal, pct, firstInst,
-        p.booking_by || '', p.team || '', p.booking_date ? new Date(p.booking_date).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '', p.payment_count || 0,
+        p.booking_by || '', p.team || '', p.booking_date ? fmtDate(p.booking_date) : '', p.payment_count || 0,
       ];
     });
 
@@ -1589,7 +1605,7 @@ const PlotPayments = () => {
         <td style="text-align:center">${pct}</td>
         <td>${p.booking_by || '—'}</td>
         <td>${p.team || '—'}</td>
-        <td>${p.booking_date ? new Date(p.booking_date).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'}</td>
+        <td>${fmtDate(p.booking_date)}</td>
       </tr>`;
     }).join('');
 
@@ -1664,7 +1680,7 @@ const PlotPayments = () => {
     const siteName = (currentSite?.name || 'ALLOTMENT DIVISION').toUpperCase();
     const siteAddr = [currentSite?.address, currentSite?.city, currentSite?.state].filter(Boolean).join(', ').toUpperCase();
     const fmtINR = (v) => parseFloat(v || 0).toLocaleString('en-IN', { minimumFractionDigits: 0 });
-    const payDate = pay.date ? new Date(pay.date).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
+    const payDate = pay.date ? fmtDate(pay.date) : '';
     const printedAt = new Date().toLocaleString('en-IN', {
       day: '2-digit', month: '2-digit', year: 'numeric',
       hour: '2-digit', minute: '2-digit', hour12: true,
@@ -1869,7 +1885,7 @@ const PlotPayments = () => {
     <div class="info-grid">
       <div class="info-item"><div class="info-lbl">Plot Identifier</div><div class="info-val">${plot.plot_no}${plot.block ? ' (Block ' + plot.block + ')' : ''}</div></div>
       <div class="info-item"><div class="info-lbl">Primary Allottee</div><div class="info-val">${(plot.buyer_name || 'UNDEFINED').toUpperCase()}</div></div>
-      <div class="info-item"><div class="info-lbl">Allotment Date</div><div class="info-val">${new Date(plot.booking_date).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })}</div></div>
+      <div class="info-item"><div class="info-lbl">Allotment Date</div><div class="info-val">${fmtDate(plot.booking_date)}</div></div>
       <div class="info-item"><div class="info-lbl">Total Consideration</div><div class="info-val">₹${fmtINR(salePrice)}</div></div>
       <div class="info-item"><div class="info-lbl">Aggregated Credits</div><div class="info-val" style="color:${grandTotal < 0 ? '#dc2626' : '#059669'}">${grandTotalSign}₹${fmtINR(Math.abs(grandTotal))}</div></div>
       <div class="info-item"><div class="info-lbl">Outstanding Balance</div><div class="info-val" style="color:${balanceColor}">${balanceSign}₹${fmtINR(Math.abs(balanceAmt))}</div></div>
@@ -1898,7 +1914,7 @@ const PlotPayments = () => {
           const cumulativeColor = currSum < 0 ? '#dc2626' : '#059669';
           return `<tr>
             <td style="text-align:center">${idx + 1}</td>
-            <td style="white-space:nowrap">${pay.date ? new Date(pay.date).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''}</td>
+            <td style="white-space:nowrap">${pay.date ? fmtDate(pay.date) : ''}</td>
             <td>${(pay.payment_from || 'LIQUID').toUpperCase()}</td>
             <td style="font-family:monospace; font-size:10px">${(pay.bank_details || 'DIRECT').toUpperCase()}</td>
             <td>${(pay.buyer_name || '').toUpperCase()}</td>
@@ -3715,6 +3731,35 @@ const PlotPayments = () => {
             </SelectContent>
           </Select>
           <Filter className="h-3.5 w-3.5 text-slate-300 hidden sm:block" />
+          <Popover open={filterBuyerOpen} onOpenChange={setFilterBuyerOpen}>
+            <PopoverTrigger asChild>
+              <Button variant="outline" role="combobox" aria-label="Filter by buyer" aria-expanded={filterBuyerOpen} className={`${chipBase} ${filterBuyer !== 'all' ? chipOn : chipOff}`}>
+                <User className="h-3 w-3 opacity-60" />
+                {filterBuyer === 'all' ? 'Buyer' : filterBuyer}
+                <ChevronsUpDown className="h-3 w-3 shrink-0 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-60 p-0" align="start">
+              <Command>
+                <CommandInput placeholder="Search buyers..." value={filterBuyerSearch} onValueChange={setFilterBuyerSearch} className="text-xs h-8" />
+                <CommandList>
+                  <CommandEmpty>No buyer found.</CommandEmpty>
+                  <CommandGroup>
+                    <CommandItem value="all buyers" onSelect={() => { setFilterBuyer('all'); setSelectedPlotIds(new Set()); setFilterBuyerOpen(false); setFilterBuyerSearch(''); }}>
+                      <Check className={`mr-2 h-3.5 w-3.5 ${filterBuyer === 'all' ? 'opacity-100' : 'opacity-0'}`} />
+                      All buyers
+                    </CommandItem>
+                    {uniqueBuyers.map(name => (
+                      <CommandItem key={name} value={name} onSelect={() => { setFilterBuyer(name); setSelectedPlotIds(new Set()); setFilterBuyerOpen(false); setFilterBuyerSearch(''); }}>
+                        <Check className={`mr-2 h-3.5 w-3.5 ${filterBuyer === name ? 'opacity-100' : 'opacity-0'}`} />
+                        {name}
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
           <Popover open={filterBookingByOpen} onOpenChange={setFilterBookingByOpen}>
               <PopoverTrigger asChild>
                 <Button variant="outline" role="combobox" className={`${chipBase} ${filterBookingBy !== 'all' ? chipOn : chipOff}`}>
@@ -3836,8 +3881,8 @@ const PlotPayments = () => {
                 <SelectItem value="plot_no">Plot No</SelectItem>
               </SelectContent>
             </Select>
-            {(filterUnitType !== 'all' || listSearch || filterBookingBy !== 'all' || filterStatus !== 'all' || filterTeam !== 'all' || filterMemberTeam !== 'all' || filterPending !== 'all' || customPendingMin || customPendingMax) && (
-              <Button variant="ghost" size="sm" onClick={() => { setFilterUnitType('all'); setSelectedPlotIds(new Set()); setListSearch(''); setFilterBookingBy('all'); setFilterStatus('all'); setFilterTeam('all'); setFilterMemberTeam('all'); setFilterPending('all'); setCustomPendingMin(''); setCustomPendingMax(''); }} className="h-7 rounded-full px-2.5 text-xs text-rose-500 hover:text-rose-600 hover:bg-rose-50">
+            {(filterUnitType !== 'all' || listSearch || filterBookingBy !== 'all' || filterBuyer !== 'all' || filterStatus !== 'all' || filterTeam !== 'all' || filterMemberTeam !== 'all' || filterPending !== 'all' || customPendingMin || customPendingMax) && (
+              <Button variant="ghost" size="sm" onClick={() => { setFilterUnitType('all'); setSelectedPlotIds(new Set()); setListSearch(''); setFilterBookingBy('all'); setFilterBuyer('all'); setFilterStatus('all'); setFilterTeam('all'); setFilterMemberTeam('all'); setFilterPending('all'); setCustomPendingMin(''); setCustomPendingMax(''); }} className="h-7 rounded-full px-2.5 text-xs text-rose-500 hover:text-rose-600 hover:bg-rose-50">
                 <X className="w-3 h-3 mr-1" /> Clear
               </Button>
             )}
