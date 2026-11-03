@@ -6,6 +6,7 @@ import QRCode from 'qrcode';
 import { apolloClient } from '../graphql/client';
 import { GET_EXPENSES_PAGE_DATA, GET_EXPENSES_BREAKDOWN } from '../graphql/queries';
 import * as XLSX from 'xlsx';
+import { toast } from 'sonner';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -168,6 +169,8 @@ const Expenses = () => {
   const [editingId, setEditingId] = useState(null);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [submitting, setSubmitting] = useState(false);
+  const [downloadingStatement, setDownloadingStatement] = useState(false);
+  const statementDownloadRef = useRef(false);
 
   const [members, setMembers] = useState([]);
   const [memberSearch, setMemberSearch] = useState('');
@@ -717,6 +720,46 @@ const Expenses = () => {
     );
   };
 
+  // The full site statement is independent of screen filters and pagination.
+  const downloadStatement = async () => {
+    if (!siteId || statementDownloadRef.current) return;
+    statementDownloadRef.current = true;
+    setDownloadingStatement(true);
+    try {
+      const [{ loadExpenseStatement }, { downloadExpenseStatement }] = await Promise.all([
+        import('../utils/loadExpenseStatement'),
+        import('../utils/expenseStatementExport'),
+      ]);
+      const data = await loadExpenseStatement({
+        site: currentSite,
+        fetchAllExpenses: async (exportSiteId) => {
+          const result = await apolloClient.query({
+            query: GET_EXPENSES_PAGE_DATA,
+            variables: {
+              siteId: String(exportSiteId),
+              page: 1,
+              limit: 0,
+              filters: { onlySite: true, order: 'ASC' },
+            },
+            fetchPolicy: 'no-cache',
+          });
+          return result.data?.expensesPageData;
+        },
+      });
+      if (data.expenses.length === 0) {
+        toast.info('No expenses are available for this site yet.');
+        return;
+      }
+      await downloadExpenseStatement(data);
+      toast.success(`Statement downloaded for all ${data.expenses.length} expense entries in ${data.site.name}.`);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not download the expense statement. Please try again.');
+    } finally {
+      statementDownloadRef.current = false;
+      setDownloadingStatement(false);
+    }
+  };
+
   // ── Download Excel ──
   const downloadExcel = async () => {
     try {
@@ -971,7 +1014,14 @@ const Expenses = () => {
           >
             <RadarIcon className="w-3.5 h-3.5 mr-1" /> Radar
           </Button>
-          <Button variant="outline" size="sm" onClick={downloadExcel} className="text-xs" disabled={expenses.length === 0}>
+          <Button variant="outline" size="sm" onClick={downloadStatement}
+            className="text-xs border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+            disabled={downloadingStatement} aria-busy={downloadingStatement}
+            title="Download an Excel statement for all expense entries in this site, regardless of filters or page">
+            {downloadingStatement ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+            {downloadingStatement ? 'Preparing Statement…' : 'Download Statement'}
+          </Button>
+          <Button variant="outline" size="sm" onClick={downloadExcel} className="text-xs" disabled={expenses.length === 0} title="Export expenses matching the current filters to Excel">
             <Download className="w-3.5 h-3.5 mr-1" /> Excel
           </Button>
           {canWrite && (

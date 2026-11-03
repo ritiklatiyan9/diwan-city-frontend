@@ -454,6 +454,8 @@ const Layout = () => {
   const [notifSent, setNotifSent] = useState([]);
   const [notifAppCounts, setNotifAppCounts] = useState({ total: 0 });
   const [notifEditCounts, setNotifEditCounts] = useState({ pending: 0 });
+  const notifSiteRef = useRef(currentSite?.id);
+  notifSiteRef.current = currentSite?.id;
   const [notifActionId, setNotifActionId] = useState(null); // id being approved/rejected
 
   // Map remapped daybook sources back to 'daybook' for the API
@@ -511,6 +513,7 @@ const Layout = () => {
           api.get(`/edit-requests/counts?site_id=${currentSite.id}`),
           api.get(`/imprest/expense-requests?site_id=${currentSite.id}`),
         ]);
+        if (String(notifSiteRef.current) !== String(currentSite.id)) return;
         const siteId = currentSite.id;
 
         // Regular approvals (daybook, expenses, etc.)
@@ -563,6 +566,7 @@ const Layout = () => {
           // Pending approvals explicitly delegated to this sub-admin for the current site.
           api.get(`/approvals/pending?site_id=${currentSite.id}&assigned_admin_id=${user.id}`),
         ]);
+        if (String(notifSiteRef.current) !== String(currentSite.id)) return;
         const siteId = currentSite.id;
 
         const edits = editRes.status === 'fulfilled'
@@ -605,11 +609,17 @@ const Layout = () => {
     } catch (err) {
       console.error('fetchNotifApprovals failed:', err);
     } finally {
-      setNotifLoading(false);
+      if (String(notifSiteRef.current) === String(currentSite.id)) setNotifLoading(false);
     }
   }, [currentSite?.id, isAdmin, user?.id]);
 
   useEffect(() => {
+    setNotifReceived([]);
+    setNotifSent([]);
+    setNotifAppCounts({ total: 0 });
+    setNotifEditCounts({ pending: 0 });
+    setNotifLoading(false);
+    setNotifOpen(false);
     if (currentSite?.id) fetchNotifApprovals();
   }, [currentSite?.id, fetchNotifApprovals]);
 

@@ -100,7 +100,7 @@ export const Sites = () => {
         setMessage({ type: 'success', text: 'Site created' });
       }
       await fetchSites();
-      await refreshSites();
+      await refreshSites({ force: true });
       setTimeout(() => setDialogOpen(false), 500);
     } catch (err) {
       setMessage({ type: 'error', text: err.response?.data?.message || 'Operation failed' });
@@ -112,7 +112,7 @@ export const Sites = () => {
     try {
       await api.delete(`/sites/${id}`);
       await fetchSites();
-      await refreshSites();
+      await refreshSites({ force: true });
     } catch (err) {
       console.error('Failed to delete site:', err);
     }
