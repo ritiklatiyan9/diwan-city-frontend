@@ -1,8 +1,8 @@
-import { Navigate } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 export const ProtectedRoute = ({ children, requiredRole, requiredModule }) => {
-  const { isAuthenticated, loading, user, hasPermission } = useAuth();
+  const { isAuthenticated, loading, user, hasPermission, currentSite, isAdmin } = useAuth();
 
   if (loading) {
     return (
@@ -31,6 +31,16 @@ export const ProtectedRoute = ({ children, requiredRole, requiredModule }) => {
   // Module permission check (for sub-admins)
   if (requiredModule && !hasPermission(requiredModule, 'read')) {
     return <Navigate to="/dashboard" replace />;
+  }
+
+  if (requiredModule && !['settings', 'chat'].includes(requiredModule) && !currentSite) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
+        <h1 className="text-lg font-semibold text-slate-800">No available site</h1>
+        <p className="text-sm text-slate-500">{isAdmin ? 'Activate a site in Sites to continue.' : 'Your assigned sites are inactive or unavailable. Contact your administrator.'}</p>
+        {isAdmin && <Link to="/sites" className="text-sm font-medium text-blue-600 hover:underline">Manage sites</Link>}
+      </div>
+    );
   }
 
   return children;

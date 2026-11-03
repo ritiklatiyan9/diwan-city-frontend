@@ -4,6 +4,9 @@
  */
 import { ApolloClient, InMemoryCache, HttpLink, from } from '@apollo/client';
 import { setContext } from '@apollo/client/link/context';
+import { ErrorLink } from '@apollo/client/link/error';
+import { CombinedGraphQLErrors } from '@apollo/client/errors';
+import eventBus from '../utils/eventBus';
 
 const httpLink = new HttpLink({
   uri: `${import.meta.env.VITE_API_URL || 'http://localhost:80000'}/graphql`,
@@ -19,8 +22,18 @@ const authLink = setContext((_, { headers }) => {
   };
 });
 
+const siteErrorLink = new ErrorLink(({ error }) => {
+  if (CombinedGraphQLErrors.is(error)) {
+    for (const item of error.errors) {
+      if (item.extensions?.code === 'SITE_INACTIVE') {
+        eventBus.emit('site-unavailable', { siteId: item.extensions.siteId });
+      }
+    }
+  }
+});
+
 export const apolloClient = new ApolloClient({
-  link: from([authLink, httpLink]),
+  link: from([siteErrorLink, authLink, httpLink]),
   cache: new InMemoryCache({
     typePolicies: {
       Query: {

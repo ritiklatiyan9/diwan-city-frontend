@@ -7,6 +7,8 @@ import { GET_PLOT_PAGE_DATA, GET_PLOT_PAYMENT_DETAIL, INVALIDATE_PLOT_CACHE } fr
 import { apolloClient } from '../graphql/client';
 import api from '../api/api';
 import * as XLSX from 'xlsx';
+import { toast } from 'sonner';
+import { loadPlotStatement } from '../utils/loadPlotStatement';
 import UserAvatar from '../components/UserAvatar';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -418,6 +420,8 @@ const PlotPayments = () => {
   });
   const [message, setMessage] = useState({ type: '', text: '' });
   const [submitting, setSubmitting] = useState(false);
+  const [downloadingStatement, setDownloadingStatement] = useState(false);
+  const statementDownloadRef = useRef(false);
 
   // Edit request (sub-admin proof photo)
   const [proofPhoto, setProofPhoto] = useState(null);
@@ -1497,6 +1501,42 @@ const PlotPayments = () => {
     XLSX.utils.book_append_sheet(wb, ws, 'Payments');
     const filename = `Plot_${(p.plot_no || '').replace(/[^a-zA-Z0-9]/g, '_')}_Payments_${new Date().toISOString().split('T')[0]}.xlsx`;
     XLSX.writeFile(wb, filename);
+  };
+
+  // Fetch a fresh, complete site statement independently of table filters or selection.
+  const downloadStatement = async () => {
+    if (!siteId || statementDownloadRef.current) return;
+    statementDownloadRef.current = true;
+    setDownloadingStatement(true);
+    try {
+      const [data, { downloadPlotStatement }] = await Promise.all([
+        loadPlotStatement({
+          api,
+          site: currentSite,
+          fetchPlotDetail: async (plotId, exportSiteId) => {
+            const result = await apolloClient.query({
+              query: GET_PLOT_PAYMENT_DETAIL,
+              variables: { plotId: String(plotId), siteId: String(exportSiteId) },
+              fetchPolicy: 'no-cache',
+            });
+            return result.data?.plotPaymentDetail;
+          },
+        }),
+        import('../utils/plotStatementExport'),
+      ]);
+      if (!Array.isArray(data?.plots)) throw new Error('Invalid statement response');
+      if (data.plots.length === 0) {
+        toast.info('No plots are available for this site yet.');
+        return;
+      }
+      await downloadPlotStatement(data);
+      toast.success(`Statement downloaded for all ${data.plots.length} units in ${data.site?.name || currentSite.name}.`);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not download the statement. Please try again.');
+    } finally {
+      statementDownloadRef.current = false;
+      setDownloadingStatement(false);
+    }
   };
 
   // ── Download All Plots Excel ──
@@ -3689,8 +3729,15 @@ const PlotPayments = () => {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-1.5">
-            <Button variant="outline" size="sm" onClick={downloadAllPlotsExcel} className="text-xs h-8 rounded-lg" disabled={filteredPlots.length === 0}>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <Button variant="outline" size="sm" onClick={downloadStatement}
+              className="text-xs h-8 rounded-lg border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+              disabled={downloadingStatement} aria-busy={downloadingStatement}
+              title="Download an Excel statement for all units and their transactions in this site, regardless of filters">
+              {downloadingStatement ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+              {downloadingStatement ? 'Preparing Statement…' : 'Download Statement'}
+            </Button>
+            <Button variant="outline" size="sm" onClick={downloadAllPlotsExcel} className="text-xs h-8 rounded-lg" disabled={filteredPlots.length === 0} title="Export the filtered plot list to Excel">
               <Download className="w-3.5 h-3.5 mr-1" /> Excel
             </Button>
             <Button variant="outline" size="sm" onClick={printSelectedPlots} className="text-xs h-8 rounded-lg" disabled={filteredPlots.length === 0}>

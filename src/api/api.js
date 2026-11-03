@@ -18,6 +18,10 @@ api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('accessToken');
     const sessionId = localStorage.getItem('sessionId');
+    try {
+      const site = JSON.parse(localStorage.getItem('currentSite') || 'null');
+      if (site?.id) config.headers['X-Site-ID'] = String(site.id);
+    } catch { /* ignore invalid browser storage */ }
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -51,6 +55,10 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
+
+    if (error.response?.data?.code === 'SITE_INACTIVE') {
+      eventBus.emit('site-unavailable', { siteId: error.response.data.siteId });
+    }
 
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;

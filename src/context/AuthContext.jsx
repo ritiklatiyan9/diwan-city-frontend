@@ -1,5 +1,8 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import api from '../api/api';
+import { apolloClient } from '../graphql/client';
+import eventBus from '../utils/eventBus';
+import { getAvailableSites, resolveCurrentSite } from '../utils/siteSelection';
 
 const AuthContext = createContext(null);
 const INACTIVITY_TIMEOUT = 15 * 60 * 1000; // 15 minutes
@@ -12,6 +15,40 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  const currentSiteRef = useRef(null);
+  const sitesRef = useRef([]);
+  const siteRefreshRef = useRef(null);
+  const siteRefreshVersionRef = useRef(0);
+
+  const commitCurrentSite = useCallback((site) => {
+    const previousId = currentSiteRef.current?.id;
+    currentSiteRef.current = site;
+    setCurrentSiteState(site);
+    if (site) {
+      const serialized = JSON.stringify(site);
+      if (localStorage.getItem('currentSite') !== serialized) localStorage.setItem('currentSite', serialized);
+    }
+    else localStorage.removeItem('currentSite');
+    if (String(previousId ?? '') !== String(site?.id ?? '')) {
+      // Stop cached records from a switched-off site surviving a site change.
+      apolloClient.clearStore().catch(err => console.error('Failed to clear site cache:', err));
+    }
+  }, []);
+
+  const applySites = useCallback((siteList) => {
+    const available = getAvailableSites(siteList);
+    let previous = currentSiteRef.current;
+    if (!previous) {
+      try { previous = JSON.parse(localStorage.getItem('currentSite') || 'null'); } catch { /* discard stale storage */ }
+    }
+    sitesRef.current = available;
+    setSites(available);
+    const serialized = JSON.stringify(available);
+    if (localStorage.getItem('sites') !== serialized) localStorage.setItem('sites', serialized);
+    commitCurrentSite(resolveCurrentSite(available, previous));
+    return available;
+  }, [commitCurrentSite]);
+
   // Fetch current user + sites from /auth/me
   const fetchMe = useCallback(async () => {
     try {
@@ -19,23 +56,14 @@ export const AuthProvider = ({ children }) => {
       const { user: userData, sites: userSites, permissions: userPerms } = response.data;
 
       setUser(userData);
-      setSites(userSites || []);
+      applySites(userSites || []);
       localStorage.setItem('user', JSON.stringify(userData));
-      localStorage.setItem('sites', JSON.stringify(userSites || []));
 
       if (userPerms) {
         setPermissions(userPerms);
         localStorage.setItem('permissions', JSON.stringify(userPerms));
       }
 
-      // If no current site selected but sites exist, pick first
-      const stored = localStorage.getItem('currentSite');
-      if (!stored && userSites?.length > 0) {
-        setCurrentSiteState(userSites[0]);
-        localStorage.setItem('currentSite', JSON.stringify(userSites[0]));
-      } else if (stored) {
-        setCurrentSiteState(JSON.parse(stored));
-      }
     } catch (err) {
       console.error('Failed to fetch user data:', err);
       const status = err?.response?.status;
@@ -50,13 +78,13 @@ export const AuthProvider = ({ children }) => {
         localStorage.removeItem('permissions');
         setUser(null);
         setSites([]);
-        setCurrentSiteState(null);
+        commitCurrentSite(null);
         setPermissions([]);
       }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [applySites, commitCurrentSite]);
 
   // Restore session on mount
   useEffect(() => {
@@ -65,7 +93,6 @@ export const AuthProvider = ({ children }) => {
       const sessionId = localStorage.getItem('sessionId');
       const userData = localStorage.getItem('user');
       const sitesData = localStorage.getItem('sites');
-      const activeSite = localStorage.getItem('currentSite');
       const permsData = localStorage.getItem('permissions');
 
       if (accessToken) {
@@ -80,10 +107,7 @@ export const AuthProvider = ({ children }) => {
             setUser(JSON.parse(userData));
           }
           if (sitesData) {
-            setSites(JSON.parse(sitesData));
-          }
-          if (activeSite) {
-            setCurrentSiteState(JSON.parse(activeSite));
+            applySites(JSON.parse(sitesData));
           }
           if (permsData) {
             setPermissions(JSON.parse(permsData));
@@ -101,16 +125,12 @@ export const AuthProvider = ({ children }) => {
 
     initAuth();
     return undefined;
-  }, [fetchMe]);
+  }, [fetchMe, applySites]);
 
 
   const setCurrentSite = (site) => {
-    setCurrentSiteState(site);
-    if (site) {
-      localStorage.setItem('currentSite', JSON.stringify(site));
-    } else {
-      localStorage.removeItem('currentSite');
-    }
+    const available = sites.find(candidate => String(candidate.id) === String(site?.id));
+    commitCurrentSite(available || null);
   };
 
   const login = async (email, password) => {
@@ -135,7 +155,6 @@ export const AuthProvider = ({ children }) => {
       }
 
       localStorage.setItem('user', JSON.stringify(data.user));
-      localStorage.setItem('sites', JSON.stringify(data.sites || []));
 
       if (data.permissions) {
         localStorage.setItem('permissions', JSON.stringify(data.permissions));
@@ -143,12 +162,7 @@ export const AuthProvider = ({ children }) => {
       }
 
       setUser(data.user);
-      setSites(data.sites || []);
-
-      // Auto-select first site
-      if (data.sites?.length > 0) {
-        setCurrentSite(data.sites[0]);
-      }
+      applySites(data.sites || []);
 
       return data.user;
     } catch (err) {
@@ -184,7 +198,7 @@ export const AuthProvider = ({ children }) => {
       delete api.defaults.headers.common['X-Session-ID']; // Remove sessionId header
       setUser(null);
       setSites([]);
-      setCurrentSiteState(null);
+      commitCurrentSite(null);
       setPermissions([]);
       setLoading(false);
     }
@@ -236,27 +250,50 @@ export const AuthProvider = ({ children }) => {
   };
 
   // Refresh sites list (after creating/updating sites)
-  const refreshSites = async () => {
-    try {
-      const response = await api.get('/sites');
-      const newSites = response.data.sites || [];
-      setSites(newSites);
-      localStorage.setItem('sites', JSON.stringify(newSites));
-
-      // If current site was deleted, reset
-      if (currentSite && !newSites.find(s => s.id === currentSite.id)) {
-        if (newSites.length > 0) {
-          setCurrentSite(newSites[0]);
-        } else {
-          setCurrentSite(null);
-        }
-      }
-
-      return newSites;
-    } catch (err) {
-      console.error('Failed to refresh sites:', err);
+  const refreshSites = useCallback(async ({ force = false } = {}) => {
+    if (force) siteRefreshVersionRef.current += 1;
+    if (siteRefreshRef.current) {
+      if (!force) return siteRefreshRef.current;
+      await siteRefreshRef.current;
     }
-  };
+    const version = siteRefreshVersionRef.current;
+    const token = localStorage.getItem('accessToken');
+    if (!token) return Promise.resolve([]);
+    siteRefreshRef.current = api.get('/sites', { params: { nocache: true } })
+      .then(response => {
+        if (token !== localStorage.getItem('accessToken') || version !== siteRefreshVersionRef.current) return [];
+        return applySites(response.data.sites || []);
+      })
+      .catch(err => { console.error('Failed to refresh sites:', err); })
+      .finally(() => { siteRefreshRef.current = null; });
+    return siteRefreshRef.current;
+  }, [applySites]);
+
+  // Other sessions and browser tabs must also stop using a disabled site.
+  useEffect(() => {
+    if (!user) return;
+    const refresh = () => { if (document.visibilityState !== 'hidden') refreshSites(); };
+    const unavailable = ({ siteId } = {}) => {
+      const available = sitesRef.current.filter(site => String(site.id) !== String(siteId));
+      applySites(available);
+      refreshSites({ force: true });
+    };
+    const onStorage = event => {
+      if (event.key === 'sites') refreshSites();
+    };
+    const timer = setInterval(refresh, 30000);
+    window.addEventListener('focus', refresh);
+    window.addEventListener('storage', onStorage);
+    document.addEventListener('visibilitychange', refresh);
+    eventBus.on('site-unavailable', unavailable);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('storage', onStorage);
+      document.removeEventListener('visibilitychange', refresh);
+      eventBus.off('site-unavailable', unavailable);
+    };
+  }, [user, applySites, refreshSites]);
 
   // Permission helper: returns true if user has the given action for the given module
   const hasPermission = useCallback((module, action) => {
