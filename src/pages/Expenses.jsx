@@ -165,6 +165,7 @@ const Expenses = () => {
   });
   const [customExpenseCategories, setCustomExpenseCategories] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [message, setMessage] = useState({ type: '', text: '' });
@@ -247,14 +248,16 @@ const Expenses = () => {
 
   // ── Fetch all ──
   const fetchExpenses = useCallback(async () => {
-    if (!siteId) return;
     const seq = ++fetchSeqRef.current;
+    if (!siteId) {
+      setLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    const watchdog = setTimeout(() => controller.abort(), 15000);
     try {
       setLoading(true);
-      // Watchdog — never let the spinner hang past 15s on a stalled request.
-      const watchdog = setTimeout(() => {
-        if (seq === fetchSeqRef.current) setLoading(false);
-      }, 15000);
+      setFetchError('');
       const filters = buildExpensesQueryFilters({
         search: debouncedSearch,
         mode: filterMode,
@@ -275,13 +278,15 @@ const Expenses = () => {
           filters,
         },
         fetchPolicy: 'network-only',
+        context: { fetchOptions: { signal: controller.signal } },
       });
-
-      clearTimeout(watchdog);
 
       if (seq !== fetchSeqRef.current) return;
 
       const pageData = data?.expensesPageData;
+      if (!Array.isArray(pageData?.expenses) || !pageData.summary || !pageData.pagination) {
+        throw new Error('The server did not return the expense data.');
+      }
       setExpenses(pageData?.expenses || []);
       setSummary(pageData?.summary || { total_debit: 0, total_credit: 0, total_count: 0 });
 
@@ -295,7 +300,11 @@ const Expenses = () => {
     } catch (err) {
       if (seq !== fetchSeqRef.current) return;
       console.error('Failed to fetch expenses:', err);
+      setFetchError(controller.signal.aborted
+        ? 'The expense request timed out. Please try again.'
+        : 'Expenses could not be loaded. Please try again.');
     } finally {
+      clearTimeout(watchdog);
       if (seq !== fetchSeqRef.current) return;
       setLoading(false);
     }
@@ -306,6 +315,7 @@ const Expenses = () => {
 
   useEffect(() => {
     fetchExpenses();
+    return () => { fetchSeqRef.current += 1; };
   }, [fetchExpenses]);
 
   // ── Lazy breakdown fetch (only when accordion is open) ──
@@ -1443,6 +1453,12 @@ const Expenses = () => {
             <div className="flex items-center justify-center py-20">
               <div className="w-5 h-5 border-2 border-slate-200 border-t-slate-600 rounded-full animate-spin" />
             </div>
+          ) : fetchError ? (
+            <div className="flex flex-col items-center gap-3 py-20 text-center" role="alert">
+              <AlertCircle className="w-8 h-8 text-red-400" />
+              <p className="text-sm font-medium text-slate-600">{fetchError}</p>
+              <Button variant="outline" size="sm" onClick={fetchExpenses}>Retry</Button>
+            </div>
           ) : expenses.length === 0 ? (
             <div className="text-center py-20">
               <CreditCard className="w-8 h-8 text-slate-200 mx-auto mb-3" />
@@ -1723,7 +1739,7 @@ const Expenses = () => {
           )}
 
           {/* Pagination Controls */}
-          {!loading && totalItems > 0 && (
+          {!loading && !fetchError && totalItems > 0 && (
             <div className="p-4 border-t flex flex-col md:flex-row items-center justify-between gap-4 overflow-x-auto">
               <div className="flex items-center gap-3 shrink-0">
                 <p className="text-xs text-slate-500">
